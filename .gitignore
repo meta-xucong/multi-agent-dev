@@ -1,0 +1,15 @@
+# Local credentials and environment configuration
+.env
+.env.*
+*.pem
+*.key
+
+# Local logs, temporary files, and Python cache
+*.log
+*.tmp
+__pycache__/
+*.pyc
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db

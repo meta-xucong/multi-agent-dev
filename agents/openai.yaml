@@ -1,0 +1,4 @@
+interface:
+  display_name: "多 Agent 协作开发"
+  short_description: "按开发文档组织主控、开发和独立审查，持续纠偏并凭证据验收"
+  default_prompt: "使用 $multi-agent-dev，按本项目开发文档完成当前任务，明确范围和硬约束，组织开发与独立审查，并提交逐项验收证据。"
