@@ -1,6 +1,6 @@
 # 自适应四职责工作流开发文档
 
-> CONTRACT_REV: v1.2。本文是 `multi-agent-dev` 的执行参考，不覆盖用户最新要求、项目 `AGENTS.md`、开发文档、章节门禁、权限边界或外部系统授权；发生冲突时以上规则优先。本文不创建常驻 Agent、不中途改变自动调用策略，也不能授权提交、推送、部署或付费调用。
+> CONTRACT_REV: v1.3.1-route-guard。本文是 `multi-agent-dev` 的执行参考，不覆盖用户最新要求、项目 `AGENTS.md`、开发文档、章节门禁、权限边界或外部系统授权；发生冲突时以上规则优先。本文不创建常驻 Agent、不中途改变自动调用策略，也不能授权提交、推送、部署或付费调用。模型路由硬门禁、`MAD_ROUTE_V1` marker、Hook I/O 和测试矩阵以 [docs/model-routing-hard-gate-development.md](../docs/model-routing-hard-gate-development.md) 为准。
 
 ## 1. 目标与不变量
 
@@ -126,6 +126,12 @@ DESIGN_QUESTION：触发位置与实际差异
 | 独立审计 | `gpt-5.6-luna/high` | 最终门禁或高风险可升为 `gpt-5.6-luna/max` |
 
 `max` 不能因“更保险”、普通失败或任务较大自动启用。升级必须有稳定问题编号、触发证据和目标；问题解决或进入普通阶段后回到默认配置。自动切换当前主会话模型不在本 Skill 能力范围内。
+
+### 5.2 `MAD_ROUTE_V1` 作用域化硬门禁
+
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，用户级同步 `PreToolUse` Hook 只处理 `message` 第一非空行带 `MAD_ROUTE_V1` 的输入；没有 marker 的普通 spawn 必须 stdout 为空、退出 0，保持其他 Skill 透传，但以 `madv1_` 开头的 task_name 缺 marker 时 deny。标记调用必须带安全 `tool_use_id`，marker 的 `task_id` 和当前 `contract_rev` 也要通过精确校验。marker 合法性、角色/阶段配对和路由真值表见开发文档，合法输入的 `model`/`reasoning_effort` 必须由 `updatedInput` 覆盖到真值表值，并在 `hookSpecificOutput.additionalContext` 产生绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、gate、Agent 类型、task_name 或全历史 fork 必须在创建 Agent 前同步 deny。
+
+每次派发必须显式携带目标 model、reasoning_effort 和适用平台的非继承 fork；Hook 的最小自动修正不是放宽要求。守卫兼容内置 `worker`、`explorer`、`default`，不扩展自定义 Agent 配置；当前 task_name 必须是与 marker 一致的合法 `madv1_<role>_<simple|escalate>_<slug>`，不能自动改名，缺失 fork_turns 可补 `none`，all/正整数/字符串正整数/其他值拒绝，旧式显式 `fork_context=true` 拒绝，fork_turns 与 fork_context 同时出现的混合 schema 直接拒绝。配置不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。出现缺 marker/receipt、`xhigh` 或实际路由不符时，结果不得放行；receipt 不证明下游实际采用模型。错误 Agent 已启动时按停止、状态确认、记录 `WRITER_STATUS`、正确 marker 重新派发的失败回流执行。Hook 未重启或未通过 `/hooks` 信任时视为未启用并 fail-closed；不能自动切换已运行主会话模型。
 
 ## 6. 可观察审计与过度思考检查
 

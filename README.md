@@ -2,7 +2,7 @@
 
 一个用于 Codex 的通用开发工作流 Skill：主控定界与协调，按需思考处理歧义，执行做最小改动，独立审计凭证据验收。
 
-采用四种逻辑职责、一份任务记录和事件驱动四步流程，重点解决范围跑偏、过度开发，以及“声称遵守约束但实际没有遵守”的问题。完整入口规则见 [SKILL.md](SKILL.md)，详细执行文档见 [references/adaptive-four-role-workflow.md](references/adaptive-four-role-workflow.md)，界面信息位于 [agents/openai.yaml](agents/openai.yaml)。
+采用四种逻辑职责、一份任务记录和事件驱动四步流程，重点解决范围跑偏、过度开发，以及“声称遵守约束但实际没有遵守”的问题。完整入口规则见 [SKILL.md](SKILL.md)，详细执行文档见 [references/adaptive-four-role-workflow.md](references/adaptive-four-role-workflow.md)，模型路由与作用域化 Hook 门禁见 [docs/model-routing-hard-gate-development.md](docs/model-routing-hard-gate-development.md)，界面信息位于 [agents/openai.yaml](agents/openai.yaml)。
 
 ## 工作流摘要
 
@@ -19,6 +19,10 @@
 事件驱动指主控在交接、决策、差异、审计结论或阻断条件出现后选择下一状态；它不是软件事件系统，也不是定时轮询。审计不得要求或声称看到隐藏推理，而检查额外文件、抽象、字段、变量、方法、依赖、重命名、行为和无新证据的重复尝试等可观察结果。
 
 默认模型策略是：主控 `gpt-5.6-luna/high`，按需思考 `gpt-5.6-sol/max`，执行 `gpt-5.6-luna/high`，独立审计 `gpt-5.6-luna/high`；Sol 只用于按需思考，其他职责只在 Luna High 与 Luna Max 之间升级。阶段门禁、最终门禁、异常裁决、冻结范围内复杂调试或高风险语义审计才按规则升级到 `max`，不能因为“更保险”、普通失败或任务较大自动升级。保守门禁要求：只有能证明任务是单模块、无公共语义变化且无实质歧义时才允许停留在 Luna High；无法证明简单就先升级。Skill 不能强制切换当前主会话模型；显式派发不支持目标配置时必须如实披露。
+
+## 模型路由硬门禁
+
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的带 marker 派发，使用 `MAD_ROUTE_V1` 真值表和同步 `PreToolUse` Hook：合法输入自动纠正遗漏、错误或 `xhigh`，在 `hookSpecificOutput.additionalContext` 返回绑定安全 `tool_use_id` 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、阶段、task_name、Agent 类型或全历史 fork 在创建 Agent 前 deny。普通未带 marker 的 spawn stdout 必须为空、退出 0，但 `madv1_` task_name 缺 marker 时 deny。每次派发仍需显式 model/reasoning_effort 和非继承 fork；缺 marker/receipt、实际路由不符或出现 `xhigh` 不得放行。兼容本机桌面与 PATH CLI，不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。Hook 需要重启 Codex 并在 `/hooks` 审阅、信任；未启用时工作流按 fail-closed 处理。Receipt 是派发凭证，不证明下游实际采用模型。具体契约、错误码、测试矩阵和失败回流见 [docs/model-routing-hard-gate-development.md](docs/model-routing-hard-gate-development.md)。
 
 交接安全门：更换写入 Agent 前必须停止并确认旧 Agent 已 inactive/completed/failed，记录 `WRITER_STATUS` 和证据；停止失败、状态未知、旧 Agent 仍活动或工作区状态无法确认时，禁止派发替代写入者。进入 `ACCEPTED` 前还必须有固定版本、通过的必需测试和独立 `AUDIT_OWNER` 审计；执行中或证据不足只能保持未放行。
 
