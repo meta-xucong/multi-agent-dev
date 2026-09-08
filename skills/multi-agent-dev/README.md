@@ -1,6 +1,6 @@
 # 多 Agent 协作开发
 
-一个用于 Codex 的通用开发工作流 Skill：主控定界与协调，按需思考处理歧义，执行做最小改动，独立审计凭证据验收。
+一个用于 Codex 的通用开发工作流 Skill：主控定界与协调，按需思考处理歧义，执行做最小改动，独立审计凭证据验收；长任务再按条件启用 `context-lean` 进行上下文治理。
 
 采用四种逻辑职责、一份任务记录和事件驱动四步流程，重点解决范围跑偏、过度开发，以及“声称遵守约束但实际没有遵守”的问题。完整入口规则见 [SKILL.md](SKILL.md)，详细执行文档见 [references/adaptive-four-role-workflow.md](references/adaptive-four-role-workflow.md)，界面信息位于 [agents/openai.yaml](agents/openai.yaml)。
 
@@ -17,6 +17,10 @@
 ```
 
 事件驱动指主控在交接、决策、差异、审计结论或阻断条件出现后选择下一状态；它不是软件事件系统，也不是定时轮询。审计不得要求或声称看到隐藏推理，而检查额外文件、抽象、字段、变量、方法、依赖、重命名、行为和无新证据的重复尝试等可观察结果。
+
+## 长任务上下文伴随能力
+
+不需要每次手动同时调用两个 Skill。主控先判断 `CONTEXT_MODE`：清晰小任务保持 `NOT_NEEDED`；长任务、大量读取、上下文退化或压缩需求进入 `ARMED`/`ACTIVE`，再按 [条件上下文治理开发文档](docs/context-lean-companion-development.md) 读取 [context-lean](../context-lean/SKILL.md)。该能力不改变范围、角色、模型路由或审计放行；压缩前后必须经过状态保存与恢复门禁。平台不支持递归 Skill 或 Hook 时，不得伪称自动调用，使用文档中的最小规则并披露能力边界。
 
 默认模型策略是：主控 `gpt-5.6-luna/high`，按需思考 `gpt-5.6-sol/max`，执行 `gpt-5.6-luna/high`，独立审计 `gpt-5.6-luna/high`；Sol 只用于按需思考，其他职责只在 Luna High 与 Luna Max 之间升级。阶段门禁、最终门禁、异常裁决、冻结范围内复杂调试或高风险语义审计才按规则升级到 `max`，不能因为“更保险”、普通失败或任务较大自动升级。保守门禁要求：只有能证明任务是单模块、无公共语义变化且无实质歧义时才允许停留在 Luna High；无法证明简单就先升级。Skill 不能强制切换当前主会话模型；显式派发不支持目标配置时必须如实披露。
 
@@ -71,7 +75,7 @@ git pull --ff-only
 ```text
 git diff --check
 git diff
-git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md tests/test_orchestration_recovery_contract.py
+git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md docs/context-lean-companion-development.md tests/test_orchestration_recovery_contract.py tests/test_context_companion_contract.py
 git commit -m "docs: refine development workflow"
 git push origin main
 ```
