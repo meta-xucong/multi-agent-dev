@@ -43,7 +43,7 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 
 ### 2.1 参考文档的阅读路由
 
-完整执行细则见 [references/adaptive-four-role-workflow.md](references/adaptive-four-role-workflow.md)。实际启动多阶段/多 Agent 实施、需要模型路由、契约修订或失败回流时，必须完整阅读该文档；仅做概念说明、只读短评或单一清晰小任务时可不加载全文。参考文档只解释协作方法，不覆盖项目规则、用户授权、章节门禁或外部操作边界。
+完整执行细则见 [references/adaptive-four-role-workflow.md](references/adaptive-four-role-workflow.md)。实际启动多阶段/多 Agent 实施、需要模型路由、契约修订或失败回流时，必须完整阅读该文档；仅做概念说明、只读短评或单一清晰小任务时可不加载全文。参考文档只解释协作方法，不覆盖项目规则、用户授权、章节门禁或外部操作边界。模型路由硬门禁、`MAD_ROUTE_V1` marker、Hook 输入输出和验收矩阵见 [docs/model-routing-hard-gate-development.md](docs/model-routing-hard-gate-development.md)；凡启用派发门禁，先按该开发文档冻结契约。
 
 ## 3. 一份任务记录
 
@@ -134,6 +134,14 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 ## 5. 自适应模型路由、Token 控制与可信度
 
 模型与推理路由、角色默认配置和升级条件见参考文档。入口门禁是：只有显式派发且平台支持时才设置子 Agent 模型/推理强度，不可用时如实披露；不能因“更保险”、普通失败或任务较大自动启用 `max`，也不能自动切换当前主会话模型。
+
+### 5.1 `MAD_ROUTE_V1` 派发硬门禁
+
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-5.6-sol/max`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-5.6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-5.6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或 `xhigh` 都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
+
+Hook 只兼容内置 `worker`、`explorer`、`default`，不建立自定义 Agent 配置；当前 schema 的 task_name 必须已经匹配与 marker 一致的 `madv1_<role>_<simple|escalate>_<slug>`，不得自动改写，缺失 `fork_turns` 可补 `none`，`all`、正整数、字符串正整数及其他值拒绝；旧式显式 `fork_context=true` 拒绝，`false` 保留，`fork_turns` 与 `fork_context` 同时出现的混合 schema 直接拒绝，无法识别的 schema 不盲加字段。每次人工或程序派发仍必须显式提供目标 model/reasoning_effort 和适用平台的非继承 fork，即使 Hook 会做最小校正；缺 marker/receipt、出现 `xhigh` 或实际路由不符，结果不得放行。
+
+用户级 Hook 需要重启 Codex 并通过 `/hooks` 审阅、信任；未信任或未重启时硬门禁不生效，工作流必须 fail-closed。配置不使用全局 `[agents].default_subagent_*`，以兼容本机桌面与 PATH CLI；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行，Skill 仍要求显式参数、marker 和 receipt。Skill 不能自动切换已经运行的主会话模型，也不能声称 receipt 证明下游实际采用模型；启动时无法证明主控为 Luna High/Max，应披露并在正确配置的新任务继续。若错误 Agent 已启动，先安全停止并确认 `inactive`/`completed`/`failed` 且无进行中写入，再按正确 marker、路由和 fork 重新派发。
 
 **保守升级门禁**：在契约冻结前，主控必须记录 `COMPLEXITY_GATE`。只有同时证明任务是单模块局部改动、需求和验收无歧义、不涉及公共 API/schema/状态/事件/安全/权限/持久化/外部副作用、没有跨模块依赖或设计问题时，才允许按 `Luna High` 启动执行。任一条件不满足或无法证明为简单任务，必须先升级：设计/语义问题启用唯一的 `gpt-5.6-sol/max` 思考 Agent；契约已冻结但实现、调试、阶段门禁或审计复杂时，将主控/执行/审计从 `gpt-5.6-luna/high` 升为 `gpt-5.6-luna/max`；不得在未完成升级判断前以 `Luna High` 继续实现。平台不支持目标配置时如实披露并使用可用配置，不得伪称已升级。
 
