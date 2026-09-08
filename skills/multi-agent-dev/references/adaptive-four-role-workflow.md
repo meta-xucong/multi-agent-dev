@@ -73,6 +73,12 @@ DESIGN_QUESTION：触发位置与实际差异
                                                      └→ 等待用户
 ```
 
+### 4.1 主回合停滞与关闭收敛
+
+主任务回合和子 Agent 状态必须分开观察。一次有界等待后，若主回合仍为 `active/inProgress`，没有新的助手消息、工具事件、最新工具标记或错误，而子 Agent 均为 `inactive/completed/failed`，或为 `idle/notLoaded` 且读取成功、其回合没有 `inProgress` 和进行中写入，登记 `ORCH_STALE_SUSPECTED`；任何读取失败、空结果或状态无法证明都进入 `ORCH_BLOCKED_NEEDS_USER`，不得无限等待、重复 `closeAgent` 或据“没有输出”认定主回合已停止。完整恢复矩阵见 [docs/stalled-orchestration-recovery-development.md](../docs/stalled-orchestration-recovery-development.md)。
+
+`closeAgent` 失败必须先读取同一 `receiverThreadId`：`inactive/completed/failed` 且无进行中写入表示重复/旧句柄关闭失败，停止重试；`idle/notLoaded` 只是 UI/加载状态，必须额外确认没有 `inProgress` 回合和进行中写入；仍活动才允许一次停止/取消后复核；状态未知则阻断替代写入者。只有一次停止/取消调用或“停止并收敛”用户输入被平台接受/排队后，才进入 `ORCH_STOP_REQUESTED`；调用不支持、失败或未被接受则直接进入 `ORCH_BLOCKED_NEEDS_USER`。已排队但尚未中断的请求只保持 `ORCH_STOP_REQUESTED` 到一次有界复核；复核仍无终止证据才转为 `ORCH_BLOCKED_NEEDS_USER`。只记录任务/回合 ID、快照、停止调用结果和 `WRITER_STATUS`，等待用户在界面停止或新建任务。主回合或旧写入者未确认终止前，不得 fork、接管或继续写入；恢复后必须重新固定基线、读取当前 Skill，并使用当前 `CONTRACT_REV`、合法 marker、非继承 fork 和 receipt。
+
 ### 第一步：定界与基线
 
 1. 读取相关项目规则、开发文档、契约、既有实现和测试；只加载当前任务所需材料。

@@ -26,6 +26,8 @@
 
 交接安全门：更换写入 Agent 前必须停止并确认旧 Agent 已 inactive/completed/failed，记录 `WRITER_STATUS` 和证据；停止失败、状态未知、旧 Agent 仍活动或工作区状态无法确认时，禁止派发替代写入者。进入 `ACCEPTED` 前还必须有固定版本、通过的必需测试和独立 `AUDIT_OWNER` 审计；执行中或证据不足只能保持未放行。
 
+协作停滞门：若主回合在一次有界等待后仍 `active/inProgress` 且没有新事件，而子 Agent 已终止，登记 `ORCH_STALE_SUSPECTED`，不要无限等待或重复 `closeAgent`。关闭失败先核验同一子任务状态；已终止的重复关闭不再重试。主回合/旧写入者状态未知时禁止 fork、接管或继续写入；停止请求不支持或未被接受时进入 `ORCH_BLOCKED_NEEDS_USER`，已接受/排队则先保持 `ORCH_STOP_REQUESTED`，一次有界复核仍活动才阻断并等待用户在界面停止或新建任务。详见 [主回合停滞与协作收敛恢复开发文档](docs/stalled-orchestration-recovery-development.md)。
+
 ## 安装与使用
 
 将整个仓库作为 `multi-agent-dev` 文件夹放入 Codex 可发现的个人技能目录。当前官方文档列出的用户级路径为 `~/.agents/skills`；已有安装应沿用其实际目录，不要重复安装同名 Skill。[官方位置与加载说明](https://learn.chatgpt.com/zh-Hans/docs/build-skills)
@@ -69,7 +71,7 @@ git pull --ff-only
 ```text
 git diff --check
 git diff
-git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md
+git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md tests/test_orchestration_recovery_contract.py
 git commit -m "docs: refine development workflow"
 git push origin main
 ```
