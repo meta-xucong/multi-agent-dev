@@ -18,12 +18,15 @@ class OrchestrationRecoveryContractTests(unittest.TestCase):
         for state in (
             "ORCH_HEALTHY",
             "ORCH_STALE_SUSPECTED",
+            "ORCH_STATE_CONFLICT",
             "ORCH_STOP_REQUESTED",
             "ORCH_BLOCKED_NEEDS_USER",
         ):
             self.assertIn(state, RECOVERY)
         self.assertIn("ORCH_STALE_SUSPECTED", SKILL)
+        self.assertIn("ORCH_STATE_CONFLICT", SKILL)
         self.assertIn("ORCH_STALE_SUSPECTED", REFERENCE)
+        self.assertIn("ORCH_STATE_CONFLICT", REFERENCE)
         self.assertIn("ORCH_BLOCKED_NEEDS_USER", README)
 
     def test_idle_and_not_loaded_are_not_standalone_stop_evidence(self):
@@ -43,6 +46,29 @@ class OrchestrationRecoveryContractTests(unittest.TestCase):
     def test_recovery_does_not_define_a_fixed_timeout(self):
         self.assertNotIn("30–60 秒", RECOVERY)
         self.assertIn("等待时长本身不是停止证据", RECOVERY)
+
+    def test_monitoring_is_explicit_and_delivery_is_silent(self):
+        for text in (SKILL, REFERENCE, RECOVERY, README):
+            self.assertIn("MONITOR_MODE=DELIVERY_SILENT", text)
+            self.assertIn("MONITOR_MODE=OBSERVE", text)
+        self.assertIn("STATUS_REPORT_V1", SKILL)
+        self.assertIn("STATUS_REPORT_V1", REFERENCE)
+        self.assertIn("STATUS_REPORT_V1", RECOVERY)
+        self.assertIn("不发送周期性心跳", SKILL)
+        self.assertIn("不发送周期性心跳", README)
+
+    def test_monitoring_requires_observable_activity_evidence(self):
+        for text in (SKILL, REFERENCE, RECOVERY, README):
+            self.assertIn("工具事件", text)
+            self.assertIn("文件变化", text)
+            self.assertIn("测试结果", text)
+        self.assertIn("expected_until", SKILL)
+        self.assertIn("last_progress_at", RECOVERY)
+
+    def test_state_conflict_blocks_write_and_release(self):
+        self.assertIn("来源冲突时进入 `ORCH_STATE_CONFLICT`", RECOVERY)
+        self.assertIn("冲突未收敛前不得放行、替代写入", SKILL)
+        self.assertIn("只允许一次无写入复核", RECOVERY)
 
     def test_reassignment_stays_blocked_until_old_writer_is_stopped(self):
         for text in (SKILL, REFERENCE):

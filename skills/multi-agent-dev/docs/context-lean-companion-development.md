@@ -65,7 +65,7 @@ BLOCKED     状态无法可靠保存或恢复，暂停受影响路径
 3. 工作区差异、送审版本和关键验证结果可重新核对；
 4. 平台确实支持所采用的压缩命令或 Hook，或主控已明确改用手工状态恢复。
 
-以下情况禁止压缩后直接继续写入：正在编辑/测试、写入者状态未知、版本尚未冻结、审计证据未绑定版本，或任务处于 `ORCH_STOP_REQUESTED` / `ORCH_BLOCKED_NEEDS_USER`。
+以下情况禁止压缩后直接继续写入：正在编辑/测试、写入者状态未知、版本尚未冻结、审计证据未绑定版本，或任务处于 `ORCH_STATE_CONFLICT` / `ORCH_STOP_REQUESTED` / `ORCH_BLOCKED_NEEDS_USER`。
 
 `/compact`、`PreCompact`、`SessionStart(source=compact)` 等名称只在目标平台已确认时使用。不能把某个平台的上下文百分比、耗时、缓存行为或 Hook 输入输出推断为所有平台的事实。
 
@@ -80,7 +80,7 @@ BLOCKED     状态无法可靠保存或恢复，暂停受影响路径
 
 恢复记录缺失、过期、与工作区不一致或无法确认写入者时，进入 `BLOCKED`，重新基线或请求用户决定；不能凭压缩摘要直接继续写代码，也不能把恢复成功当作审计通过。
 
-上下文治理发现主回合或旧写入者停滞时，仍必须遵守 `ORCH_STALE_SUSPECTED`、`ORCH_STOP_REQUESTED` 和 `ORCH_BLOCKED_NEEDS_USER` 的既有收敛规则。`context-lean` 无权绕过停止确认、唯一写入者门禁或替代 Agent 派发门禁。
+上下文治理发现主回合或旧写入者停滞时，仍必须遵守 `ORCH_STALE_SUSPECTED`、`ORCH_STATE_CONFLICT`、`ORCH_STOP_REQUESTED` 和 `ORCH_BLOCKED_NEEDS_USER` 的既有收敛规则。`context-lean` 无权绕过状态对账、停止确认、唯一写入者门禁或替代 Agent 派发门禁。
 
 ## 6. 四种职责的边界
 

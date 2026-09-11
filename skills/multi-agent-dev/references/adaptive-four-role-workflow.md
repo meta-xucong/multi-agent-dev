@@ -75,9 +75,28 @@ DESIGN_QUESTION：触发位置与实际差异
 
 ### 4.1 主回合停滞与关闭收敛
 
-主任务回合和子 Agent 状态必须分开观察。一次有界等待后，若主回合仍为 `active/inProgress`，没有新的助手消息、工具事件、最新工具标记或错误，而子 Agent 均为 `inactive/completed/failed`，或为 `idle/notLoaded` 且读取成功、其回合没有 `inProgress` 和进行中写入，登记 `ORCH_STALE_SUSPECTED`；任何读取失败、空结果或状态无法证明都进入 `ORCH_BLOCKED_NEEDS_USER`，不得无限等待、重复 `closeAgent` 或据“没有输出”认定主回合已停止。完整恢复矩阵见 [docs/stalled-orchestration-recovery-development.md](../docs/stalled-orchestration-recovery-development.md)。
+主任务回合和子 Agent 状态必须分开观察。一次有界等待后，若主回合仍为 `active/inProgress`，没有新的助手消息、工具事件、最新工具标记或错误，而子 Agent 均为 `inactive/completed/failed`，或为 `idle/notLoaded` 且读取成功、其回合没有 `inProgress` 和进行中写入，登记 `ORCH_STALE_SUSPECTED`；任何读取失败、空结果或状态无法证明都进入 `ORCH_BLOCKED_NEEDS_USER`。若 `wait_threads`、`read_thread`、UI 或其他来源对同一回合给出矛盾状态，登记 `ORCH_STATE_CONFLICT`，只允许一次无写入复核，不得无限等待、重复 `closeAgent`、fork 或据“没有输出”认定主回合已停止。完整恢复矩阵见 [docs/stalled-orchestration-recovery-development.md](../docs/stalled-orchestration-recovery-development.md)。
 
 `closeAgent` 失败必须先读取同一 `receiverThreadId`：`inactive/completed/failed` 且无进行中写入表示重复/旧句柄关闭失败，停止重试；`idle/notLoaded` 只是 UI/加载状态，必须额外确认没有 `inProgress` 回合和进行中写入；仍活动才允许一次停止/取消后复核；状态未知则阻断替代写入者。只有一次停止/取消调用或“停止并收敛”用户输入被平台接受/排队后，才进入 `ORCH_STOP_REQUESTED`；调用不支持、失败或未被接受则直接进入 `ORCH_BLOCKED_NEEDS_USER`。已排队但尚未中断的请求只保持 `ORCH_STOP_REQUESTED` 到一次有界复核；复核仍无终止证据才转为 `ORCH_BLOCKED_NEEDS_USER`。只记录任务/回合 ID、快照、停止调用结果和 `WRITER_STATUS`，等待用户在界面停止或新建任务。主回合或旧写入者未确认终止前，不得 fork、接管或继续写入；恢复后必须重新固定基线、读取当前 Skill，并使用当前 `CONTRACT_REV`、合法 marker、非继承 fork 和 receipt。
+
+### 4.2 监测模式与活动凭证
+
+正式开发默认 `MONITOR_MODE=DELIVERY_SILENT`：不发送周期性心跳或重复无变化消息，只在交接、阻断、范围/契约变化和最终交付记录必要状态。只有用户明确要求监测或诊断运行中会话时才启用 `MONITOR_MODE=OBSERVE`，并按事件而不是固定间隔更新。
+
+在 `OBSERVE` 模式，主控在建立基线、派发/收回子 Agent、开始或结束长操作、发现状态冲突和形成最终结论时发送一次 `STATUS_REPORT_V1`，只包含可观察元数据：
+
+```text
+task_id / turn_id / observed_at
+phase / main_status / CONTRACT_REV
+child_agents: id, role, status, last_event, expected_until, writer
+active_writer / changed_files
+last_progress_evidence / tests / audit_status
+blockers / next_step / conclusion
+```
+
+长操作记录 `operation_started_at`、`expected_until`、`last_progress_at` 和负责人；预期窗口内没有消息不构成停滞。子 Agent 的活动必须有最近工具事件、文件变化、测试结果或 `STATUS_REPORT_V1`；UI 标签或口头声明不能单独证明活动。`wait_threads` 只作唤醒/粗状态，`read_thread` 事件/工具/文件记录作为活动证据，`list_threads` 只作导航参考；来源冲突进入 `ORCH_STATE_CONFLICT`。
+
+`DELIVERY_SILENT` 下可将状态压缩写入现有任务记录或交接记录，不要求把报告反复发给用户；同一问题只有状态或证据变化时才更新。
 
 ### 第一步：定界与基线
 
@@ -107,6 +126,10 @@ DESIGN_QUESTION：触发位置与实际差异
 自动路由只表示主控把范围内的修正或补证交给责任人并推进固定版本、重跑检查和独立复审；它不允许审计员自修、自补证后自批。只要仍有安全且已授权的范围内步骤，一次拒收不要求用户再次说“继续”；只有扩大范围、改变契约、放宽硬约束或取得新权限时才等待用户。
 
 任何版本在进入 `ACCEPTED` 前，必须同时满足：执行者已停止写入、版本已固定、必要测试已通过、所有必需证据已绑定该版本，并由 `AUDIT_OWNER` 完成独立审计。执行中、测试失败、版本未冻结或审计未完成时，状态只能是进行中、返工、补证或阻断，不得提交、推送或宣布完成。
+
+### 4.3 任务结束通知
+
+对实施任务，只有最终进入 `done`、`blocked` 或 `stopped` 才发送一次 ServerChan 微信通知；审计拒收后的范围内返工、普通测试失败、阶段交接和只读监测不发送。调用 `scripts/notify_serverchan.py`，沿用 `SCT_SENDKEY` → `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt` 的凭据顺序和默认 3 次重试。消息只保留项目、状态、摘要、关键验证和用户下一步；完整日志、隐藏推理和密钥不得发送。通知失败必须记录为交付风险并在最终回复披露；成功或明确记录交付阻断后才可报告终态交付。详细字段与示例见 [ServerChan 任务结束通知开发文档](../docs/serverchan-completion-notification.md)。
 
 ## 5. 模型与推理路由
 

@@ -30,7 +30,11 @@
 
 交接安全门：更换写入 Agent 前必须停止并确认旧 Agent 已 inactive/completed/failed，记录 `WRITER_STATUS` 和证据；停止失败、状态未知、旧 Agent 仍活动或工作区状态无法确认时，禁止派发替代写入者。进入 `ACCEPTED` 前还必须有固定版本、通过的必需测试和独立 `AUDIT_OWNER` 审计；执行中或证据不足只能保持未放行。
 
-协作停滞门：若主回合在一次有界等待后仍 `active/inProgress` 且没有新事件，而子 Agent 已终止，登记 `ORCH_STALE_SUSPECTED`，不要无限等待或重复 `closeAgent`。关闭失败先核验同一子任务状态；已终止的重复关闭不再重试。主回合/旧写入者状态未知时禁止 fork、接管或继续写入；停止请求不支持或未被接受时进入 `ORCH_BLOCKED_NEEDS_USER`，已接受/排队则先保持 `ORCH_STOP_REQUESTED`，一次有界复核仍活动才阻断并等待用户在界面停止或新建任务。详见 [主回合停滞与协作收敛恢复开发文档](docs/stalled-orchestration-recovery-development.md)。
+协作停滞门：若主回合在一次有界等待后仍 `active/inProgress` 且没有新事件，而子 Agent 已终止，登记 `ORCH_STALE_SUSPECTED`，不要无限等待或重复 `closeAgent`。`wait_threads`、`read_thread`、UI 等来源冲突时登记 `ORCH_STATE_CONFLICT`，只做一次无写入复核；冲突未收敛前禁止 fork、接管、替代写入或放行。关闭失败先核验同一子任务状态；已终止的重复关闭不再重试。主回合/旧写入者状态未知时禁止 fork、接管或继续写入；停止请求不支持或未被接受时进入 `ORCH_BLOCKED_NEEDS_USER`，已接受/排队则先保持 `ORCH_STOP_REQUESTED`，一次有界复核仍活动才阻断并等待用户在界面停止或新建任务。详见 [主回合停滞与协作收敛恢复开发文档](docs/stalled-orchestration-recovery-development.md)。
+
+监测与静默：正式开发默认 `MONITOR_MODE=DELIVERY_SILENT`，不发送周期性心跳或重复无变化消息；只有用户明确要求监测/诊断运行中会话时才启用 `MONITOR_MODE=OBSERVE`。监测模式在基线、子 Agent 交接、长操作边界、状态冲突和最终结论处发送结构化 `STATUS_REPORT_V1`，且必须有工具事件、文件变化、测试结果或报告等活动凭证；UI 标签或口头声明不能单独证明子 Agent 正在工作。
+
+任务真正结束或需要用户接管时，实施任务发送一次 ServerChan 微信通知；中间返工、普通失败和监测/诊断任务不推送。通知使用 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md) 与随 Skill 提供的 `scripts/notify_serverchan.py`，复用 `SCT_SENDKEY` / `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次；通知失败必须作为交付风险报告。
 
 ## 安装与使用
 
@@ -68,14 +72,14 @@ git pull --ff-only
 
 在本仓库的本地副本中修改规则；只在需要调整名称、描述或默认提示时修改 `agents/openai.yaml`。提交前检查实际差异、敏感信息和 Skill 格式，并用与本次修改相关的真实场景验证行为。
 
-`agents/openai.yaml` 仅是 Codex 的界面元数据，不是模型路由、权限系统或自定义 Agent 配置；本次没有创建自定义 Agent TOML、脚本、依赖或自动化。若确需自定义 Agent，必须遵循官方支持的配置目录和格式，不能把它写进本 Skill 或用 `openai.yaml` 冒充。
+`agents/openai.yaml` 仅是 Codex 的界面元数据，不是模型路由、权限系统或自定义 Agent 配置；ServerChan 通知脚本是本 Skill 的受控支持资源，不是自定义 Agent 或权限系统。若确需自定义 Agent，必须遵循官方支持的配置目录和格式，不能把它写进本 Skill 或用 `openai.yaml` 冒充。
 
 确认后，仓库维护者可以提交并推送：
 
 ```text
 git diff --check
 git diff
-git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md docs/context-lean-companion-development.md tests/test_orchestration_recovery_contract.py tests/test_context_companion_contract.py
+git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md docs/context-lean-companion-development.md docs/serverchan-completion-notification.md scripts/notify_serverchan.py tests/test_orchestration_recovery_contract.py tests/test_context_companion_contract.py tests/test_serverchan_notification_contract.py
 git commit -m "docs: refine development workflow"
 git push origin main
 ```

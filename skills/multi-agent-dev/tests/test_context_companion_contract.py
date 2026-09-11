@@ -26,6 +26,7 @@ class ContextCompanionContractTests(unittest.TestCase):
         self.assertRegex(DOC, r"当前写入、测试和审计动作已到安全边界")
         self.assertRegex(DOC, r"恢复记录缺失、过期、与工作区不一致")
         self.assertIn("ORCH_STALE_SUSPECTED", DOC)
+        self.assertIn("ORCH_STATE_CONFLICT", DOC)
         self.assertIn("ORCH_STOP_REQUESTED", DOC)
         self.assertIn("ORCH_BLOCKED_NEEDS_USER", DOC)
         self.assertIn("不能凭压缩摘要直接继续写代码", DOC)

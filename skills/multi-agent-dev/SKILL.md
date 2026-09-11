@@ -1,6 +1,6 @@
 ---
 name: multi-agent-dev
-description: "按开发文档组织主控、按需思考、最小执行与独立审计的自适应协作，控制范围漂移、过度开发和硬约束违规，以可复现证据验收；长任务按条件启用 context-lean 上下文治理。用户要求多 Agent/子智能体协作开发、开发与审计/纠察分离，或明确要求按此工作流实施或审查任务时使用。不要仅因普通编码、代码解释或讨论多 Agent 概念而自动触发；显式用于诊断或评审时保持只读。"
+description: "按开发文档组织主控、按需思考、最小执行与独立审计的自适应协作，控制范围漂移、过度开发和硬约束违规，以可复现证据验收；长任务按条件启用 context-lean，任务终态可按规则发送 ServerChan 微信提醒。用户要求多 Agent/子智能体协作开发、开发与审计/纠察分离，或明确要求按此工作流实施或审查任务时使用。不要仅因普通编码、代码解释或讨论多 Agent 概念而自动触发；显式用于诊断或评审时保持只读。"
 ---
 
 # 多 Agent 协作开发
@@ -68,7 +68,7 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 
 进入 `ACTIVE` 后，主控自动路由到上下文伴随流程；平台支持递归加载时读取 [context-lean/SKILL.md](../context-lean/SKILL.md)，用户无需再次输入该 Skill。不支持时执行伴随开发文档中的最小上下文纪律并如实披露。该伴随能力只控制读取、输出、检查点和压缩后恢复，不得改变开发范围、公共契约、模型路由、唯一写入者、审计结论或外部授权。
 
-压缩或切换回合前必须处于安全边界，保存目标、实际文件、契约版本、开放问题、写入者、审计状态和下一步；恢复后先核对基线、契约、写入者和版本证据，再允许写入。压缩命令、Hook、上下文阈值和平台性能数据只有在目标平台确认支持时才可使用，不能伪称自动执行。`ORCH_STALE_SUSPECTED`、`ORCH_STOP_REQUESTED` 和 `ORCH_BLOCKED_NEEDS_USER` 的停滞收敛门优先，context-lean 不得绕过它们。
+压缩或切换回合前必须处于安全边界，保存目标、实际文件、契约版本、开放问题、写入者、审计状态和下一步；恢复后先核对基线、契约、写入者和版本证据，再允许写入。压缩命令、Hook、上下文阈值和平台性能数据只有在目标平台确认支持时才可使用，不能伪称自动执行。`ORCH_STALE_SUSPECTED`、`ORCH_STATE_CONFLICT`、`ORCH_STOP_REQUESTED` 和 `ORCH_BLOCKED_NEEDS_USER` 的停滞收敛门优先，context-lean 不得绕过它们。
 
 ## 4. 事件驱动四步流程
 
@@ -107,7 +107,7 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 
 ### 4.1 主回合停滞与协作收敛恢复
 
-主任务和子智能体是两个独立对象。主回合长时间 `active/inProgress`、没有新的助手消息/工具事件/最新工具标记，而子智能体已终止时，问题应登记为 `ORCH_STALE_SUSPECTED`，不能继续重复等待、重复 `closeAgent` 或把“没有输出”当作停止证据。完整状态、证据和恢复矩阵见 [docs/stalled-orchestration-recovery-development.md](docs/stalled-orchestration-recovery-development.md)。
+主任务和子智能体是两个独立对象。主回合长时间 `active/inProgress`、没有新的助手消息/工具事件/最新工具标记，而子智能体已终止时，问题应登记为 `ORCH_STALE_SUSPECTED`，不能继续重复等待、重复 `closeAgent` 或把“没有输出”当作停止证据。若 `wait_threads`、`read_thread`、UI 或其他状态来源对同一回合给出互相矛盾的状态，登记为 `ORCH_STATE_CONFLICT`；状态冲突未收敛前不得放行、替代写入或继续依赖旧写入者。完整状态、证据和恢复矩阵见 [docs/stalled-orchestration-recovery-development.md](docs/stalled-orchestration-recovery-development.md)。
 
 处理顺序固定为：
 
@@ -116,6 +116,45 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 3. 主回合或旧写入者状态未知/仍活动时，禁止 fork、替代写入者和继续代码写入；只有一次停止/取消调用或“停止并收敛”用户输入已被平台接受/排队后，才记录 `ORCH_STOP_REQUESTED`，否则直接进入 `ORCH_BLOCKED_NEEDS_USER`。
 4. 单次停止请求后的有界复核仍没有终止证据，或平台无法接受停止请求时，进入 `ORCH_BLOCKED_NEEDS_USER`；“请求已排队但尚未中断”先保持 `ORCH_STOP_REQUESTED`，复核后仍活动再转为阻断。只向用户报告任务/回合 ID、最后快照和缺失的停止证据，等待用户在界面停止或新建任务；不得归档、重置、覆盖或宣布通过。
 5. 只有主回合和旧写入者都被确认终止，且基线可核对后，才能按当前 `CONTRACT_REV`、合法 `MAD_ROUTE_V1`、非继承 fork 和 receipt 重新派发。旧 marker、`xhigh` 和无 receipt 结果全部作废。
+
+### 4.2 监测模式与活动凭证（仅在用户明确要求监测/诊断时启用）
+
+正式开发默认使用 `MONITOR_MODE=DELIVERY_SILENT`：不发送周期性心跳、不重复播报未变化状态，只在阶段交接、阻断、范围/契约变化和最终交付时记录必要信息。只有用户明确要求“监测、追踪、诊断运行中会话”时才切换为 `MONITOR_MODE=OBSERVE`；监测也按事件触发，不按固定间隔刷屏。
+
+在 `OBSERVE` 模式，主控在建立基线、派发/收回子智能体、开始或结束长操作、发现状态冲突、形成最终结论时发送一次结构化 `STATUS_REPORT_V1`。报告只包含可观察元数据，不包含隐藏推理，至少包括：
+
+```text
+task_id / turn_id / observed_at
+phase / main_status / CONTRACT_REV
+child_agents: id, role, status, last_event, expected_until, writer
+active_writer / changed_files
+last_progress_evidence / tests / audit_status
+blockers / next_step / conclusion
+```
+
+长操作必须记录 `operation_started_at`、`expected_until`、`last_progress_at` 和负责人；在 `expected_until` 前不因没有新消息而判定停滞。子智能体“正在工作”只有在最近工具事件、文件变化、测试结果或 `STATUS_REPORT_V1` 等活动凭证存在时才可记为已确认；UI 标签或口头声明单独不构成证据。`wait_threads` 用于唤醒和粗状态，`read_thread` 的事件/工具/文件记录用于活动证据，`list_threads` 只作导航参考；三者冲突时进入 `ORCH_STATE_CONFLICT`，不得把任何单一来源当作完成或停止证据。
+
+`DELIVERY_SILENT` 不要求这些报告作为用户可见消息反复输出；可将其压缩写入现有任务记录或交接记录。无变化不重复更新，同一问题只有状态或证据变化时才报告。
+
+### 4.3 任务结束后的 ServerChan 微信通知
+
+对已授权的实施任务，只有在任务真正进入终态或需要用户接管时发送一次 ServerChan 通知；中间阶段、普通测试失败、审计拒收后的范围内返工和监测/诊断任务不发送，避免把工作流变成消息噪声。终态使用：
+
+- `done`：目标、必要测试、独立审计和最终证据均完成；
+- `blocked`：缺少用户决定、权限、凭据或不可替代的外部条件；
+- `stopped`：受保护停止、需要人工验收或平台 guardrail 结束。
+
+使用随本 Skill 提供的 `scripts/notify_serverchan.py`，发送前必须包含项目/任务、终态、完成或阻断原因、最重要的验证结果和用户下一步。脚本沿用 `long-running-task` 的同一凭据和重试语义：先读取 `SCT_SENDKEY`，再读取 `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`；不得在命令、日志或回复中打印完整 SendKey。默认重试 3 次；全部失败时仍须在最终回复中报告“通知失败”及错误，不能把失败伪装成已送达。通知成功或明确记录交付阻断后，才可向用户报告该终态已完成。
+
+示例：
+
+```powershell
+python "$env:USERPROFILE\.codex\skills\multi-agent-dev\skills\multi-agent-dev\scripts\notify_serverchan.py" `
+  --project . --status done --title "多 Agent 任务完成，等待验收" `
+  --message "独立审计已通过；请检查最终差异和测试记录。"
+```
+
+详细状态映射、失败处理和 `--dry-run` 验证见 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md)。
 
 ### 第三步：固定版本，独立凭证据审计
 
@@ -150,7 +189,7 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 
 安全拒绝、不支持、禁用或等待，可能是正确的边界处理，但不能因此把未实现的目标标记完成；仅当本次目标本身就是拒绝或禁用时，才据其验收条件判断。
 
-交付用简短结果说明：实际完成、修改文件、验证命令和结果、硬约束证据位置、未完成/未验证项及必要决定。项目已有章节状态、审批与提交规则时继续遵守；本流程通过不自动触发 Git 提交或任何外部操作。
+交付用简短结果说明：实际完成、修改文件、验证命令和结果、硬约束证据位置、未完成/未验证项及必要决定。终态实施任务还要报告 ServerChan 通知是否成功；通知失败属于交付风险。项目已有章节状态、审批与提交规则时继续遵守；本流程通过不自动触发 Git 提交或任何外部操作。
 
 ## 5. 自适应模型路由、Token 控制与可信度
 
