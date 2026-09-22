@@ -22,7 +22,7 @@
 
 | Skill | 用途 | 模型要求 | 入口 |
 | --- | --- | --- | --- |
-| `multi-agent-audit-claude-code` | 多模型协作审计工作流：Sonnet 5 (主对话) + Opus 4.8 (独立审计) + Opus 5 (构建验证)，集成八荣八耻工程纪律 | Claude Opus 4.8/5 + Sonnet 5 + Haiku 4.5 | [`skills/multi-agent-audit-claude-code/SKILL.md`](skills/multi-agent-audit-claude-code/SKILL.md) |
+| `multi-agent-audit-claude-code` | 多模型协作审计工作流：Sonnet 5 (主对话 + 构建验证) + Opus 4.8 (独立审计)，集成八荣八耻工程纪律 | Claude Opus 4.8 + Sonnet 5 | [`skills/multi-agent-audit-claude-code/SKILL.md`](skills/multi-agent-audit-claude-code/SKILL.md) |
 
 ## 平台与技术栈
 
@@ -55,12 +55,11 @@
 ### Claude Code 技术栈
 
 - **模型要求**:
-  - Opus 4.8/5 (独立审计)
-  - Sonnet 5 (主对话协调)
-  - Haiku 4.5 (构建验证，实际映射到 Opus 5)
+  - Opus 4.8 + high effort (独立审计，需要深度推理发现隐蔽问题)
+  - Sonnet 5 + medium effort (主对话协调 + 构建验证)
 
 - **核心依赖**:
-  - Claude Code Agent tool: `subagent_type`, `model` 参数
+  - Claude Code Agent tool: `subagent_type`, `model`, `effort` 参数
   - 无需 Hook 系统 (原生支持)
 
 ## 关键特性

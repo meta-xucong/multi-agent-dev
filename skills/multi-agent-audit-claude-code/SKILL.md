@@ -1,7 +1,7 @@
 ---
 name: multi-agent-audit
-description: Multi-agent workflow - implement → audit(Opus 4.8) → verify(Opus 5) → fix loop with context-lean delegation
-version: 2.0.0
+description: Multi-agent workflow - implement → audit(Opus 4.8/high) → verify(Sonnet 5/medium) → fix loop with context-lean delegation
+version: 2.1.0
 ---
 
 # Multi-Agent Audit Workflow (Context-Lean)
@@ -15,11 +15,13 @@ version: 2.0.0
 3. **Evidence-based**: 一旦有足够证据就停止收集
 4. **Surgical changes**: 精确修改，不做多余重构
 
-## 模型分配
+## 模型与思考强度分配
 
-- **主对话** (Sonnet 5): 协调、决策、实现
-- **auditor** (Opus 4.8 真实): 独立审计，提供差异化视角
-- **verifier** (Haiku 4.5 → Opus 5): 构建/测试验证
+| 角色 | 模型 | Effort | 理由 |
+|---|---|---|---|
+| **主对话** | Sonnet 5 | (session default) | 平衡能力和成本，足够应对协调和实现 |
+| **auditor** | Opus 4.8 | `high` | 需要深度推理发现隐蔽问题，差异化视角 |
+| **verifier** | Sonnet 5 | `medium` | 机械性验证任务，避免过度推理导致误判 |
 
 ## 工作流程
 
@@ -109,7 +111,8 @@ const [auditResult, verifyResult] = await Promise.all([
   // Auditor: Opus 4.8 独立审计
   Agent({
     subagent_type: "auditor",
-    model: "claude-opus-4-8",
+    model: "opus",
+    effort: "high",  // 深度推理，发现隐蔽问题
     description: "Independent audit with Opus 4.8",
     prompt: `
 你是独立审计员 (Opus 4.8)，提供独立视角。
@@ -159,13 +162,14 @@ audit:
 `
   }),
 
-  // Verifier: Haiku → Opus 5
+  // Verifier: Sonnet 5 构建验证
   Agent({
     subagent_type: "verifier",
-    model: "claude-haiku-4-5-20251001",  // 映射到 Opus 5
+    model: "sonnet",
+    effort: "medium",  // 机械性验证，避免过度推理
     description: "Build & test verification",
     prompt: `
-你负责构建和测试验证 (实际用 Opus 5)。
+你负责构建和测试验证 (Sonnet 5)。
 
 ## 任务
 运行构建和测试，回报原始输出。
@@ -185,7 +189,7 @@ ${files.map(f => f.path).join('\n')}
 \`\`\`markdown
 # Verification Report
 
-Model: claude-haiku-4-5-20251001 (→ Opus 5)
+Model: claude-sonnet-5 (medium effort)
 
 ## Build
 Exit: {code}
