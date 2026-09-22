@@ -55,8 +55,8 @@
 ### Claude Code 技术栈
 
 - **模型要求**:
-  - Opus 4.8 + high effort (独立审计，需要深度推理发现隐蔽问题)
-  - Sonnet 5 + medium effort (主对话协调 + 构建验证)
+  - Opus 4.8 + max effort (独立审计，需要最高强度推理发现隐蔽问题)
+  - Sonnet 5 + high effort (主对话协调 + 高标准构建验证)
 
 - **核心依赖**:
   - Claude Code Agent tool: `subagent_type`, `model`, `effort` 参数

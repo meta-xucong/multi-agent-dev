@@ -20,8 +20,8 @@ version: 2.1.0
 | 角色 | 模型 | Effort | 理由 |
 |---|---|---|---|
 | **主对话** | Sonnet 5 | (session default) | 平衡能力和成本，足够应对协调和实现 |
-| **auditor** | Opus 4.8 | `high` | 需要深度推理发现隐蔽问题，差异化视角 |
-| **verifier** | Sonnet 5 | `medium` | 机械性验证任务，避免过度推理导致误判 |
+| **auditor** | Opus 4.8 | `max` | 需要最高强度推理发现隐蔽问题，差异化视角 |
+| **verifier** | Sonnet 5 | `high` | 高标准验证，避免遗漏构建/测试问题 |
 
 ## 工作流程
 
@@ -112,7 +112,7 @@ const [auditResult, verifyResult] = await Promise.all([
   Agent({
     subagent_type: "auditor",
     model: "opus",
-    effort: "high",  // 深度推理，发现隐蔽问题
+    effort: "max",  // 最高强度推理，发现隐蔽问题
     description: "Independent audit with Opus 4.8",
     prompt: `
 你是独立审计员 (Opus 4.8)，提供独立视角。
@@ -166,7 +166,7 @@ audit:
   Agent({
     subagent_type: "verifier",
     model: "sonnet",
-    effort: "medium",  // 机械性验证，避免过度推理
+    effort: "high",  // 高标准验证，避免遗漏问题
     description: "Build & test verification",
     prompt: `
 你负责构建和测试验证 (Sonnet 5)。
