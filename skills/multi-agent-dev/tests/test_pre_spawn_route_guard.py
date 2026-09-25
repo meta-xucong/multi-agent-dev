@@ -62,11 +62,11 @@ class RouteGuardPureTests(unittest.TestCase):
 
     def test_three_role_route_classes(self) -> None:
         cases = [
-            ("think", "ESCALATE_REQUIRED", "PRE_CONTRACT", "gpt-5.6-sol", "max"),
-            ("execute", "SIMPLE_PROVEN", "CONTRACT_FROZEN", "gpt-5.6-luna", "high"),
-            ("execute", "ESCALATE_REQUIRED", "CONTRACT_FROZEN", "gpt-5.6-luna", "max"),
-            ("audit", "SIMPLE_PROVEN", "VERSION_FROZEN", "gpt-5.6-luna", "high"),
-            ("audit", "ESCALATE_REQUIRED", "VERSION_FROZEN", "gpt-5.6-luna", "max"),
+            ("think", "ESCALATE_REQUIRED", "PRE_CONTRACT", "gpt-6-sol", "xhigh"),
+            ("execute", "SIMPLE_PROVEN", "CONTRACT_FROZEN", "gpt-6-luna", "high"),
+            ("execute", "ESCALATE_REQUIRED", "CONTRACT_FROZEN", "gpt-6-luna", "max"),
+            ("audit", "SIMPLE_PROVEN", "VERSION_FROZEN", "gpt-6-luna", "high"),
+            ("audit", "ESCALATE_REQUIRED", "VERSION_FROZEN", "gpt-6-luna", "max"),
         ]
         for role, gate, stage, expected_model, expected_effort in cases:
             with self.subTest(role=role, gate=gate):
@@ -92,21 +92,21 @@ class RouteGuardPureTests(unittest.TestCase):
         self.assertEqual((action, exit_code), ("allow", 0))
         assert output is not None
         updated = output["hookSpecificOutput"]["updatedInput"]
-        self.assertEqual(updated["model"], "gpt-5.6-luna")
+        self.assertEqual(updated["model"], "gpt-6-luna")
         self.assertEqual(updated["reasoning_effort"], "high")
         self.assertEqual(updated["other"], "preserve")
         receipt = output["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("secret task details", receipt)
         self.assertIn('"requested_model":"other"', receipt)
         self.assertIn('"requested_reasoning_effort":"xhigh"', receipt)
-        self.assertIn('"enforced_model":"gpt-5.6-luna"', receipt)
+        self.assertIn('"enforced_model":"gpt-6-luna"', receipt)
         self.assertIn('"enforced_reasoning_effort":"high"', receipt)
         self.assertIn('"corrected":true', receipt)
 
     def test_correct_route_is_deterministic_and_idempotent(self) -> None:
         original = {
             "message": marker("execute", "ESCALATE_REQUIRED", "CONTRACT_FROZEN"),
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "reasoning_effort": "max",
             "task_name": "madv1_execute_escalate_route_guard",
             "fork_turns": "none",
@@ -151,7 +151,7 @@ class RouteGuardPureTests(unittest.TestCase):
                 )
                 self.assertEqual((action, exit_code), ("allow", 0))
                 assert output is not None
-                self.assertEqual(output["hookSpecificOutput"]["updatedInput"]["model"], "gpt-5.6-luna")
+                self.assertEqual(output["hookSpecificOutput"]["updatedInput"]["model"], "gpt-6-luna")
         action, output, exit_code = guard.guard_payload(
             payload(tool_input={"message": marker(), "agent_type": "custom", "model": "bad"})
         )
@@ -352,7 +352,7 @@ class RouteGuardCliTests(unittest.TestCase):
         decoded = json.loads(result.stdout)
         specific = decoded["hookSpecificOutput"]
         self.assertEqual(specific["permissionDecision"], "allow")
-        self.assertEqual(specific["updatedInput"]["model"], "gpt-5.6-luna")
+        self.assertEqual(specific["updatedInput"]["model"], "gpt-6-luna")
         self.assertEqual(specific["updatedInput"]["reasoning_effort"], "max")
         self.assertIn("MAD_ROUTE_RECEIPT", specific["additionalContext"])
         self.assertNotIn("permissionDecisionReason", specific)

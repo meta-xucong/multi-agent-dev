@@ -81,7 +81,7 @@ blockers / next_step / conclusion
    - 仅为 `idle/notLoaded`：必须读取成功，并确认没有 `inProgress` 回合和进行中写入后，才可登记为重复关闭；读取失败或结果为空则进入 `ORCH_BLOCKED_NEEDS_USER`；
    - 仍活动：记录失败证据，只允许一次平台支持的停止/取消，然后重新核验；
    - 状态未知或读取失败：进入 `ORCH_BLOCKED_NEEDS_USER`，禁止替代写入者。
-6. **恢复门禁**：只有主回合和旧写入者都被确认终止，且工作区/基线可核对后，才能 fork 或派发替代者。替代者必须重新读取 Skill、使用当前 `CONTRACT_REV`、合法 `MAD_ROUTE_V1`、非继承 fork 和 receipt；旧会话的旧 marker、`xhigh`、无 receipt 结果全部作废。
+6. **恢复门禁**：只有主回合和旧写入者都被确认终止，且工作区/基线可核对后，才能 fork 或派发替代者。替代者必须重新读取 Skill、使用当前 `CONTRACT_REV`、合法 `MAD_ROUTE_V1`、非继承 fork 和 receipt；旧会话的旧 marker、与当前真值表不符的模型/推理强度、无 receipt 结果全部作废。
 7. **用户交接**：平台无法接受停止请求，或已接受的请求经过一次有界复核仍不能中断主回合时，不自动归档、重置或覆盖任务；向用户报告任务/回合 ID、最后快照、已发出的单次停止请求、仍缺少的停止证据，并请求用户在 UI 停止或新建任务。状态只能是 `ORCH_BLOCKED_NEEDS_USER`，不能 `ACCEPTED`。
 
 ## 5. 验收矩阵

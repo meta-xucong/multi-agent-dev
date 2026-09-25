@@ -137,7 +137,7 @@ blockers / next_step / conclusion
 
 ### 5.1 保守升级门禁
 
-契约冻结前，主控必须记录 `COMPLEXITY_GATE`，取值为 `SIMPLE_PROVEN` 或 `ESCALATE_REQUIRED`。只有同时满足以下条件，才允许执行者按 `gpt-5.6-luna/high` 启动：
+契约冻结前，主控必须记录 `COMPLEXITY_GATE`，取值为 `SIMPLE_PROVEN` 或 `ESCALATE_REQUIRED`。只有同时满足以下条件，才允许执行者按 `gpt-6-luna/high` 启动：
 
 - 仅涉及单一模块的局部改动；
 - 用户目标、非目标和验收条件没有歧义；
@@ -145,14 +145,14 @@ blockers / next_step / conclusion
 - 没有跨模块依赖、共享边界冲突或 `DESIGN_QUESTION`；
 - 现有实现、来源依据和验证方法足以直接落地。
 
-任一条件不满足，或主控无法用任务记录中的原文和证据证明条件成立，就必须取 `ESCALATE_REQUIRED`，不得先用 `Luna High` 试做再补升级。路由规则为：设计/契约/语义问题只启用唯一的 `gpt-5.6-sol/max` 思考 Agent；契约已冻结但执行、调试、阶段门禁或审计复杂时，将主控/执行/审计从 `gpt-5.6-luna/high` 升为 `gpt-5.6-luna/max`。Sol 不用于执行或审计。主控必须记录触发条件、目标模型和推理强度；平台不支持目标配置时如实披露并使用可用配置，不得声称已升级。问题解决、边界收窄并重新证明为简单后，才可回到 `SIMPLE_PROVEN` 和默认强度。
+任一条件不满足，或主控无法用任务记录中的原文和证据证明条件成立，就必须取 `ESCALATE_REQUIRED`，不得先用 `Luna High` 试做再补升级。路由规则为：设计/契约/语义问题只启用唯一的 `gpt-6-sol/xhigh` 思考 Agent；契约已冻结但执行、调试、阶段门禁或审计复杂时，将主控/执行/审计从 `gpt-6-luna/high` 升为 `gpt-6-luna/max`。Sol 不用于执行或审计。主控必须记录触发条件、目标模型和推理强度；平台不支持目标配置时如实披露并使用可用配置，不得声称已升级。问题解决、边界收窄并重新证明为简单后，才可回到 `SIMPLE_PROVEN` 和默认强度。
 
 | 职责 | 默认配置 | 允许升级的触发 |
 | --- | --- | --- |
-| 主控 | `gpt-5.6-luna/high` | 阶段门禁或异常裁决可用 `max` |
-| 按需思考 | `gpt-5.6-sol/max`，只要启用就使用 `max` | 唯一允许使用 Sol 的职责；不常驻，不因任务大而启动 |
-| 执行 | `gpt-5.6-luna/high` | 冻结范围内的复杂调试可用 `max` |
-| 独立审计 | `gpt-5.6-luna/high` | 最终门禁或高风险可升为 `gpt-5.6-luna/max` |
+| 主控 | `gpt-6-luna/high` | 阶段门禁或异常裁决可用 `max` |
+| 按需思考 | `gpt-6-sol/xhigh`，只要启用就使用 `xhigh` | 唯一允许使用 Sol 的职责；不常驻，不因任务大而启动 |
+| 执行 | `gpt-6-luna/high` | 冻结范围内的复杂调试可用 `max` |
+| 独立审计 | `gpt-6-luna/high` | 最终门禁或高风险可升为 `gpt-6-luna/max` |
 
 `max` 不能因“更保险”、普通失败或任务较大自动启用。升级必须有稳定问题编号、触发证据和目标；问题解决或进入普通阶段后回到默认配置。自动切换当前主会话模型不在本 Skill 能力范围内。
 
@@ -160,7 +160,7 @@ blockers / next_step / conclusion
 
 对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，用户级同步 `PreToolUse` Hook 只处理 `message` 第一非空行带 `MAD_ROUTE_V1` 的输入；没有 marker 的普通 spawn 必须 stdout 为空、退出 0，保持其他 Skill 透传，但以 `madv1_` 开头的 task_name 缺 marker 时 deny。标记调用必须带安全 `tool_use_id`，marker 的 `task_id` 和当前 `contract_rev` 也要通过精确校验。marker 合法性、角色/阶段配对和路由真值表见开发文档，合法输入的 `model`/`reasoning_effort` 必须由 `updatedInput` 覆盖到真值表值，并在 `hookSpecificOutput.additionalContext` 产生绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、gate、Agent 类型、task_name 或全历史 fork 必须在创建 Agent 前同步 deny。
 
-每次派发必须显式携带目标 model、reasoning_effort 和适用平台的非继承 fork；Hook 的最小自动修正不是放宽要求。守卫兼容内置 `worker`、`explorer`、`default`，不扩展自定义 Agent 配置；当前 task_name 必须是与 marker 一致的合法 `madv1_<role>_<simple|escalate>_<slug>`，不能自动改名，缺失 fork_turns 可补 `none`，all/正整数/字符串正整数/其他值拒绝，旧式显式 `fork_context=true` 拒绝，fork_turns 与 fork_context 同时出现的混合 schema 直接拒绝。配置不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。出现缺 marker/receipt、`xhigh` 或实际路由不符时，结果不得放行；receipt 不证明下游实际采用模型。错误 Agent 已启动时按停止、状态确认、记录 `WRITER_STATUS`、正确 marker 重新派发的失败回流执行。Hook 未重启或未通过 `/hooks` 信任时视为未启用并 fail-closed；不能自动切换已运行主会话模型。
+每次派发必须显式携带目标 model、reasoning_effort 和适用平台的非继承 fork；Hook 的最小自动修正不是放宽要求。守卫兼容内置 `worker`、`explorer`、`default`，不扩展自定义 Agent 配置；当前 task_name 必须是与 marker 一致的合法 `madv1_<role>_<simple|escalate>_<slug>`，不能自动改名，缺失 fork_turns 可补 `none`，all/正整数/字符串正整数/其他值拒绝，旧式显式 `fork_context=true` 拒绝，fork_turns 与 fork_context 同时出现的混合 schema 直接拒绝。配置不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。出现缺 marker/receipt、推理强度与真值表不符或实际路由不符时，结果不得放行；receipt 不证明下游实际采用模型。错误 Agent 已启动时按停止、状态确认、记录 `WRITER_STATUS`、正确 marker 重新派发的失败回流执行。Hook 未重启或未通过 `/hooks` 信任时视为未启用并 fail-closed；不能自动切换已运行主会话模型。
 
 ## 6. 可观察审计与过度思考检查
 

@@ -115,7 +115,7 @@ description: "按开发文档组织主控、按需思考、最小执行与独立
 2. 对 `closeAgent` 失败的同一 `receiverThreadId` 立即查状态：`inactive/completed/failed` 且无进行中写入才可登记为重复/旧句柄关闭失败；`idle/notLoaded` 只是 UI/加载状态，必须读取成功并再确认没有 `inProgress` 回合和进行中写入后才可作同样处理；读取失败或空结果直接进入 `ORCH_BLOCKED_NEEDS_USER`，只有仍活动或状态未知时才允许一次停止/取消后复核。
 3. 主回合或旧写入者状态未知/仍活动时，禁止 fork、替代写入者和继续代码写入；只有一次停止/取消调用或“停止并收敛”用户输入已被平台接受/排队后，才记录 `ORCH_STOP_REQUESTED`，否则直接进入 `ORCH_BLOCKED_NEEDS_USER`。
 4. 单次停止请求后的有界复核仍没有终止证据，或平台无法接受停止请求时，进入 `ORCH_BLOCKED_NEEDS_USER`；“请求已排队但尚未中断”先保持 `ORCH_STOP_REQUESTED`，复核后仍活动再转为阻断。只向用户报告任务/回合 ID、最后快照和缺失的停止证据，等待用户在界面停止或新建任务；不得归档、重置、覆盖或宣布通过。
-5. 只有主回合和旧写入者都被确认终止，且基线可核对后，才能按当前 `CONTRACT_REV`、合法 `MAD_ROUTE_V1`、非继承 fork 和 receipt 重新派发。旧 marker、`xhigh` 和无 receipt 结果全部作废。
+5. 只有主回合和旧写入者都被确认终止，且基线可核对后，才能按当前 `CONTRACT_REV`、合法 `MAD_ROUTE_V1`、非继承 fork 和 receipt 重新派发。旧 marker、与当前真值表不符的模型/推理强度和无 receipt 结果全部作废。
 
 ### 4.2 监测模式与活动凭证（仅在用户明确要求监测/诊断时启用）
 
@@ -197,13 +197,13 @@ python "$env:USERPROFILE\.codex\skills\multi-agent-dev\skills\multi-agent-dev\sc
 
 ### 5.1 `MAD_ROUTE_V1` 派发硬门禁
 
-对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-5.6-sol/max`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-5.6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-5.6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或 `xhigh` 都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-6-sol/xhigh`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或与真值表不符，都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
 
-Hook 只兼容内置 `worker`、`explorer`、`default`，不建立自定义 Agent 配置；当前 schema 的 task_name 必须已经匹配与 marker 一致的 `madv1_<role>_<simple|escalate>_<slug>`，不得自动改写，缺失 `fork_turns` 可补 `none`，`all`、正整数、字符串正整数及其他值拒绝；旧式显式 `fork_context=true` 拒绝，`false` 保留，`fork_turns` 与 `fork_context` 同时出现的混合 schema 直接拒绝，无法识别的 schema 不盲加字段。每次人工或程序派发仍必须显式提供目标 model/reasoning_effort 和适用平台的非继承 fork，即使 Hook 会做最小校正；缺 marker/receipt、出现 `xhigh` 或实际路由不符，结果不得放行。
+Hook 只兼容内置 `worker`、`explorer`、`default`，不建立自定义 Agent 配置；当前 schema 的 task_name 必须已经匹配与 marker 一致的 `madv1_<role>_<simple|escalate>_<slug>`，不得自动改写，缺失 `fork_turns` 可补 `none`，`all`、正整数、字符串正整数及其他值拒绝；旧式显式 `fork_context=true` 拒绝，`false` 保留，`fork_turns` 与 `fork_context` 同时出现的混合 schema 直接拒绝，无法识别的 schema 不盲加字段。每次人工或程序派发仍必须显式提供目标 model/reasoning_effort 和适用平台的非继承 fork，即使 Hook 会做最小校正；缺 marker/receipt、推理强度与当前真值表不符或实际路由不符，结果不得放行。
 
 用户级 Hook 需要重启 Codex 并通过 `/hooks` 审阅、信任；未信任或未重启时硬门禁不生效，工作流必须 fail-closed。配置不使用全局 `[agents].default_subagent_*`，以兼容本机桌面与 PATH CLI；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行，Skill 仍要求显式参数、marker 和 receipt。Skill 不能自动切换已经运行的主会话模型，也不能声称 receipt 证明下游实际采用模型；启动时无法证明主控为 Luna High/Max，应披露并在正确配置的新任务继续。若错误 Agent 已启动，先安全停止并确认 `inactive`/`completed`/`failed` 且无进行中写入，再按正确 marker、路由和 fork 重新派发。
 
-**保守升级门禁**：在契约冻结前，主控必须记录 `COMPLEXITY_GATE`。只有同时证明任务是单模块局部改动、需求和验收无歧义、不涉及公共 API/schema/状态/事件/安全/权限/持久化/外部副作用、没有跨模块依赖或设计问题时，才允许按 `Luna High` 启动执行。任一条件不满足或无法证明为简单任务，必须先升级：设计/语义问题启用唯一的 `gpt-5.6-sol/max` 思考 Agent；契约已冻结但实现、调试、阶段门禁或审计复杂时，将主控/执行/审计从 `gpt-5.6-luna/high` 升为 `gpt-5.6-luna/max`；不得在未完成升级判断前以 `Luna High` 继续实现。平台不支持目标配置时如实披露并使用可用配置，不得伪称已升级。
+**保守升级门禁**：在契约冻结前，主控必须记录 `COMPLEXITY_GATE`。只有同时证明任务是单模块局部改动、需求和验收无歧义、不涉及公共 API/schema/状态/事件/安全/权限/持久化/外部副作用、没有跨模块依赖或设计问题时，才允许按 `Luna High` 启动执行。任一条件不满足或无法证明为简单任务，必须先升级：设计/语义问题启用唯一的 `gpt-6-sol/xhigh` 思考 Agent；契约已冻结但实现、调试、阶段门禁或审计复杂时，将主控/执行/审计从 `gpt-6-luna/high` 升为 `gpt-6-luna/max`；不得在未完成升级判断前以 `Luna High` 继续实现。平台不支持目标配置时如实披露并使用可用配置，不得伪称已升级。
 
 - 纠偏和质量审计归入同一独立审计职责，使用同一任务记录；设计讨论与纠偏可早介入，正式验收只针对固定版本。
 - 问题使用稳定编号，只有状态或证据变化才更新；不重复广播相同警告，不互相轮询催进度，不把长日志搬来搬去。

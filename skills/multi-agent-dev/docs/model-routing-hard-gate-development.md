@@ -11,7 +11,7 @@
 在 Agent 派发工具到达执行前，对带有 `MAD_ROUTE_V1` marker 的调用做同步、可复现的模型路由校验和最小输入修正：
 
 - 将职责、复杂度门和阶段映射到唯一的模型/推理强度。
-- 对合法 marker 强制写入真值表路由，修正遗漏、错误值和 `xhigh`，并保留原始 `tool_input` 的其他字段。
+- 对合法 marker 强制写入真值表路由，修正遗漏、错误值和与真值表不符的推理强度，并保留原始 `tool_input` 的其他字段。
 - 拒绝缺少必要证明、非法阶段、非法字段、全历史继承或不受支持的 Agent 类型。
 - 对没有 marker 的 spawn 保持完全透传，标准输出为空、退出码为 0。
 - 生成不含完整 message、prompt 或其他敏感内容的 `MAD_ROUTE_RECEIPT`，作为可观察的派发凭证。
@@ -23,7 +23,7 @@
 - 不实现自定义 Agent TOML、插件安装器、模型发现、成本估算或任何新的 Agent 类型体系。
 - 不读 transcript、不保存 prompt/message、不落日志、不调用网络或外部服务。
 - 不改变非 spawn 工具，不给旧式 schema 盲加字段，不改变现有业务状态、事件、权限或持久化语义。
-- 不以 hook 替代独立审计；缺 receipt、路由不符或出现 `xhigh` 的结果不得放行。
+- 不以 hook 替代独立审计；缺 receipt、路由不符或推理强度与真值表不符的结果不得放行。
 
 ## 2. 故障证据抽象
 
@@ -79,14 +79,14 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 
 | role | complexity_gate | 合法阶段 | model | reasoning_effort |
 | --- | --- | --- | --- | --- |
-| `think` | `ESCALATE_REQUIRED` | `PRE_CONTRACT` | `gpt-5.6-sol` | `max` |
+| `think` | `ESCALATE_REQUIRED` | `PRE_CONTRACT` | `gpt-6-sol` | `xhigh` |
 | `think` | `SIMPLE_PROVEN` | — | 非法 | — |
-| `execute` | `SIMPLE_PROVEN` | `CONTRACT_FROZEN` | `gpt-5.6-luna` | `high` |
-| `execute` | `ESCALATE_REQUIRED` | `CONTRACT_FROZEN` | `gpt-5.6-luna` | `max` |
-| `audit` | `SIMPLE_PROVEN` | `VERSION_FROZEN` | `gpt-5.6-luna` | `high` |
-| `audit` | `ESCALATE_REQUIRED` | `VERSION_FROZEN` | `gpt-5.6-luna` | `max` |
+| `execute` | `SIMPLE_PROVEN` | `CONTRACT_FROZEN` | `gpt-6-luna` | `high` |
+| `execute` | `ESCALATE_REQUIRED` | `CONTRACT_FROZEN` | `gpt-6-luna` | `max` |
+| `audit` | `SIMPLE_PROVEN` | `VERSION_FROZEN` | `gpt-6-luna` | `high` |
+| `audit` | `ESCALATE_REQUIRED` | `VERSION_FROZEN` | `gpt-6-luna` | `max` |
 
-任意合法 marker 都按本表覆盖 `model` 和 `reasoning_effort`；输入遗漏、错误或 `xhigh` 都不能保留。所有其他字段保持不变。
+任意合法 marker 都按本表覆盖 `model` 和 `reasoning_effort`；输入遗漏、错误或与本表不符的推理强度都不能保留。所有其他字段保持不变。
 
 ### 4.3 task_name、agent_type 与 fork
 
@@ -140,7 +140,7 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 
 配置迁移只做以下最小变化：
 
-1. 顶层 `model` 保持 `gpt-5.6-luna`。
+1. 顶层 `model` 保持 `gpt-6-luna`。
 2. 顶层 `model_reasoning_effort` 从 `xhigh` 改为 `high`。
 3. 不新增全局 `[agents]` 默认子 Agent 块，以兼容桌面内置 Codex 与 PATH CLI 两个版本；省略参数时由 Luna High 主控继承只作兜底，本 Skill 仍必须显式参数、marker 和 receipt，复杂主控下遗漏不能放行。
 4. 在既有 `[features]` 新增 `hooks = true`，不改变其他 feature。
@@ -150,7 +150,7 @@ Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信�
 
 ## 7. 失败回流
 
-- 缺 marker/receipt、实际路由不符、任何 `xhigh` 或 hook 未启用：结果不得放行，记录为门禁失败并重新派发。
+- 缺 marker/receipt、实际路由不符、推理强度与真值表不符或 hook 未启用：结果不得放行，记录为门禁失败并重新派发。
 - 标记 JSON/字段/阶段/继承非法：保持同步 deny，不创建 Agent；修正原始派发输入后重新走同一 hook。
 - 若错误 Agent 已启动：立即停止或取消其后续写入，确认状态为 `inactive`、`completed` 或 `failed` 且无进行中写入，记录 `WRITER_STATUS` 与停止证据；再按正确 marker、模型、推理强度和非继承 fork 重新派发。不能以口头声明或额度耗尽代替停止证据。
 - 若只缺测试证据而代码未变，补证后由独立审计复核同一版本；若需要改变契约、权限、外部副作用或文件范围，回到契约回流并重新冻结。
@@ -163,7 +163,7 @@ Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信�
 | --- | --- | --- |
 | 透传 | 无 marker、空 message、其他 tool name | stdout 空、退出 0、无输入修改 |
 | 合法路由 | think escalate；execute simple/escalate；audit simple/escalate | allow、receipt、真值表 model/effort |
-| 修正 | model/effort 遗漏、错误、`xhigh` | updatedInput 只改必要字段；receipt 分类 requested/enforced/corrected |
+| 修正 | model/effort 遗漏、错误或与真值表不符 | updatedInput 只改必要字段；receipt 分类 requested/enforced/corrected |
 | 幂等 | 已正确设置的合法输入重复运行 | 输出路由与 receipt 稳定，输入语义不漂移 |
 | 工具名 | Agent、spawn_agent、multi_agent_v1__spawn_agent | 三者同一门禁语义 |
 | marker | JSON 失败、未知字段、缺字段、错误类型、超长字符串、旧 contract_rev | deny、稳定错误码、不回显 message |

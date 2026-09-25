@@ -32,11 +32,11 @@ SAFE_ID_RE = re.compile(rf"^{SAFE_ID_PATTERN}$")
 _MISSING = object()
 
 ROUTE_TABLE: dict[tuple[str, str], tuple[str, str, str]] = {
-    ("think", "ESCALATE_REQUIRED"): ("PRE_CONTRACT", "gpt-5.6-sol", "max"),
-    ("execute", "SIMPLE_PROVEN"): ("CONTRACT_FROZEN", "gpt-5.6-luna", "high"),
-    ("execute", "ESCALATE_REQUIRED"): ("CONTRACT_FROZEN", "gpt-5.6-luna", "max"),
-    ("audit", "SIMPLE_PROVEN"): ("VERSION_FROZEN", "gpt-5.6-luna", "high"),
-    ("audit", "ESCALATE_REQUIRED"): ("VERSION_FROZEN", "gpt-5.6-luna", "max"),
+    ("think", "ESCALATE_REQUIRED"): ("PRE_CONTRACT", "gpt-6-sol", "xhigh"),
+    ("execute", "SIMPLE_PROVEN"): ("CONTRACT_FROZEN", "gpt-6-luna", "high"),
+    ("execute", "ESCALATE_REQUIRED"): ("CONTRACT_FROZEN", "gpt-6-luna", "max"),
+    ("audit", "SIMPLE_PROVEN"): ("VERSION_FROZEN", "gpt-6-luna", "high"),
+    ("audit", "ESCALATE_REQUIRED"): ("VERSION_FROZEN", "gpt-6-luna", "max"),
 }
 
 _TASK_NAME_RE = re.compile(
@@ -198,9 +198,9 @@ def _classify_model(value: Any) -> str:
         return "omitted"
     if not isinstance(value, str):
         return "invalid_type"
-    if value == "gpt-5.6-luna":
+    if value == "gpt-6-luna":
         return "luna"
-    if value == "gpt-5.6-sol":
+    if value == "gpt-6-sol":
         return "sol"
     return "other"
 
