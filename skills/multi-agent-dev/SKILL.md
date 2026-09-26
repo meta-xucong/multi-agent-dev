@@ -205,7 +205,11 @@ python "$env:USERPROFILE\.codex\skills\multi-agent-dev\skills\multi-agent-dev\sc
 
 ### 5.1 `MAD_ROUTE_V1` 派发硬门禁
 
-对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的直接派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-6-sol/xhigh`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或与真值表不符，都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
+GPT-6/Codex TUI 当前可能把直接派发工具暴露为 `collaboration.spawn_agent`。它与 `Agent`、`spawn_agent` 和 `multi_agent_v1__spawn_agent` 使用同一 marker、路由真值表、Hook 和 receipt 约束；工具名兼容不等于可以省略 marker。
+
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 和 `collaboration.spawn_agent` 的直接派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-6-sol/xhigh`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或与真值表不符，都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
+
+Hook 需要重启 Codex 并在 `/hooks` 审阅、信任；修改 `hooks.json` 后旧 `trusted_hash` 可能失效，必须重新确认当前配置，不能只依据 `enabled=true` 或旧的 trusted 状态判断已启用。未启用时按 fail-closed 处理。
 
 不得把 Agent 派发藏在 `functions.exec`、JS 调度或其他包装调用中：PreToolUse 只能看到外层 `exec`，无法安全修改内层模型/思考强度。用户级 Hook 同时检查 `exec`；普通命令透传，检测到可识别的嵌套 spawn 就以 `MAD_ROUTE_WRAPPER_UNSUPPORTED` 拒绝。包装层被拒绝后必须改用直接派发，并以新 receipt 和子会话实际 provenance 验证；不能把外层 exec 成功当作路由成功。
 

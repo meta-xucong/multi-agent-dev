@@ -158,7 +158,9 @@ blockers / next_step / conclusion
 
 ### 5.2 `MAD_ROUTE_V1` 作用域化硬门禁
 
-对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，用户级同步 `PreToolUse` Hook 只处理 `message` 第一非空行带 `MAD_ROUTE_V1` 的输入；没有 marker 的普通 spawn 必须 stdout 为空、退出 0，保持其他 Skill 透传，但以 `madv1_` 开头的 task_name 缺 marker 时 deny。标记调用必须带安全 `tool_use_id`，marker 的 `task_id` 和当前 `contract_rev` 也要通过精确校验。marker 合法性、角色/阶段配对和路由真值表见开发文档，合法输入的 `model`/`reasoning_effort` 必须由 `updatedInput` 覆盖到真值表值，并在 `hookSpecificOutput.additionalContext` 产生绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、gate、Agent 类型、task_name 或全历史 fork 必须在创建 Agent 前同步 deny。
+GPT-6/Codex TUI 当前可能把直接派发工具暴露为 `collaboration.spawn_agent`。它与其他直接派发工具共享同一 marker、路由真值表、Hook 和 receipt 约束；没有 receipt 时不得放行。
+
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 和 `collaboration.spawn_agent` 的派发，用户级同步 `PreToolUse` Hook 只处理 `message` 第一非空行带 `MAD_ROUTE_V1` 的输入；没有 marker 的普通 spawn 必须 stdout 为空、退出 0，保持其他 Skill 透传，但以 `madv1_` 开头的 task_name 缺 marker 时 deny。标记调用必须带安全 `tool_use_id`，marker 的 `task_id` 和当前 `contract_rev` 也要通过精确校验。marker 合法性、角色/阶段配对和路由真值表见开发文档，合法输入的 `model`/`reasoning_effort` 必须由 `updatedInput` 覆盖到真值表值，并在 `hookSpecificOutput.additionalContext` 产生绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、gate、Agent 类型、task_name 或全历史 fork 必须在创建 Agent 前同步 deny。
 
 不得通过 `functions.exec` 或 JS 包装层间接派发 Agent。Hook 对普通 `exec` 透传，但发现可识别的嵌套 spawn 会以 `MAD_ROUTE_WRAPPER_UNSUPPORTED` 拒绝；包装调用没有 receipt，必须改用可直接匹配的派发工具并核对新子会话的实际模型。若平台只提供包装入口，记录 `ROUTE_UNAVAILABLE` 并暂停派发。
 
