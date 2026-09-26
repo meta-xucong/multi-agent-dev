@@ -36,7 +36,7 @@ GPT-6/Codex TUI 可能将直接派发工具暴露为 `collaboration.spawn_agent`
 
 监测与静默：正式开发默认 `MONITOR_MODE=DELIVERY_SILENT`，不发送周期性心跳或重复无变化消息；只有用户明确要求监测/诊断运行中会话时才启用 `MONITOR_MODE=OBSERVE`。监测模式在基线、子 Agent 交接、长操作边界、状态冲突和最终结论处发送结构化 `STATUS_REPORT_V1`，且必须有工具事件、文件变化、测试结果或报告等活动凭证；UI 标签或口头声明不能单独证明子 Agent 正在工作。
 
-只要本 Skill 已用于任务，任务结束、阻断、停止或中断都必须发送一次 ServerChan 微信通知。用户级 `Stop`/`Interrupt`/`SessionEnd` Hook 会调用 `hooks/task_terminal_notify.py`，终态通知失败会先重试并阻止正常结束；重复触发由 receipt 去重。最终回复末尾必须带隐藏的 `MAD_TASK_TERMINAL_V1` 标记，否则不能把任务报告为已交付。通知使用 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md) 与随 Skill 提供的 `scripts/notify_serverchan.py`，复用 `SCT_SENDKEY` / `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次；通知失败必须作为交付阻断风险报告。
+只要本 Skill 已用于任务，任务结束、阻断、停止或中断都必须发送一次 ServerChan 微信通知。主控在最终回复前显式调用随 Skill 提供的 `scripts/notify_serverchan.py`；完成通知必须带明确验证结果，最终回复不得带机器终态标记。用户级 Hook 只负责失败重试和中断补偿，不会因普通回合结束或缺少标记而阻塞。凭据复用 `SCT_SENDKEY` / `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次；通知失败必须作为交付阻断风险报告。详见 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md)。
 
 ## 安装与使用
 

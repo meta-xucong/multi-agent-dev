@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,14 +14,17 @@ sys.path.insert(0, str(ROOT / "hooks"))
 import task_terminal_notify as notify  # noqa: E402
 
 
-def marker(status: str = "done") -> str:
-    return (
-        '<!-- MAD_TASK_TERMINAL_V1 '
-        + '{"task_id":"task-001","status":"'
-        + status
-        + '","title":"Task finished","short":"Review required",'
-        + '"message":"Tests and audit completed."} -->'
-    )
+def marker(status: str = "done", verification: str | None = "Tests passed.") -> str:
+    payload = {
+        "task_id": "task-001",
+        "status": status,
+        "title": "Task finished",
+        "short": "Review required",
+        "message": "Tests and audit completed.",
+    }
+    if verification is not None:
+        payload["verification"] = verification
+    return "<!-- MAD_TASK_TERMINAL_V1 " + json.dumps(payload) + " -->"
 
 
 class TaskTerminalNotifyTests(unittest.TestCase):
@@ -41,6 +45,10 @@ class TaskTerminalNotifyTests(unittest.TestCase):
         self.assertEqual(parsed["task_id"], "task-001")
         self.assertEqual(parsed["status"], "blocked")
 
+    def test_legacy_done_marker_without_verification_is_rejected(self) -> None:
+        parsed = notify.parse_terminal_marker(marker("done", verification=None))
+        self.assertIsNone(parsed)
+
     def test_stop_without_marker_is_noop(self) -> None:
         result = notify.handle(
             {
@@ -52,7 +60,7 @@ class TaskTerminalNotifyTests(unittest.TestCase):
         )
         self.assertEqual(result, {"continue": True})
 
-    def test_active_task_cannot_stop_without_terminal_marker(self) -> None:
+    def test_active_task_stop_without_marker_does_not_block_or_send(self) -> None:
         payload = {
             "hook_event_name": "Stop",
             "session_id": "session-active",
@@ -60,9 +68,63 @@ class TaskTerminalNotifyTests(unittest.TestCase):
             "last_assistant_message": "intermediate update",
         }
         notify.register_active_session(payload, "task-active")
-        result = notify.handle(payload)
-        self.assertEqual(result["decision"], "block")
-        self.assertIn("MAD_TASK_TERMINAL_V1", result["reason"])
+        with patch.object(notify, "_run_notifier") as run:
+            result = notify.handle(payload)
+        self.assertEqual(result, {"continue": True})
+        run.assert_not_called()
+        self.assertIsNotNone(notify._active_record(payload))
+
+    def test_unverified_legacy_done_marker_does_not_send(self) -> None:
+        payload = {
+            "hook_event_name": "Stop",
+            "session_id": "session-legacy-unverified",
+            "cwd": self.temp.name,
+            "last_assistant_message": marker("done", verification=None),
+        }
+        with patch.object(notify, "_run_notifier") as run:
+            result = notify.handle(payload)
+        self.assertEqual(result, {"continue": True})
+        run.assert_not_called()
+
+    def test_direct_delivery_retires_matching_interrupt_fallback(self) -> None:
+        payload = {
+            "hook_event_name": "Stop",
+            "session_id": "session-direct",
+            "cwd": self.temp.name,
+        }
+        notify.register_active_session(payload, "task-direct")
+        self.assertEqual(notify.mark_external_delivery("task-direct", "done"), 1)
+        self.assertIsNone(notify._active_record(payload))
+        self.assertEqual(len(list(notify.RECEIPT_DIR.glob("*.json"))), 1)
+        self.assertEqual(
+            notify.handle({**payload, "hook_event_name": "SessionEnd"}),
+            {"continue": True},
+        )
+
+    def test_registered_direct_intent_can_be_retried_by_stop_hook(self) -> None:
+        payload = {
+            "hook_event_name": "Stop",
+            "session_id": "session-intent",
+            "cwd": self.temp.name,
+            "last_assistant_message": "ordinary final response without marker",
+        }
+        notify.register_active_session(payload, "task-intent")
+        self.assertEqual(
+            notify.register_external_intent(
+                "task-intent",
+                "blocked",
+                "Task blocked",
+                "Needs review",
+                "Audit evidence is missing.",
+                "Audit failed: version-bound evidence is incomplete.",
+            ),
+            1,
+        )
+        with patch.object(notify, "_run_notifier", return_value=(True, "ok")) as run:
+            self.assertEqual(notify.handle(payload), {"continue": True})
+        run.assert_called_once()
+        self.assertIsNone(notify._active_record(payload))
+        self.assertEqual(len(list(notify.RECEIPT_DIR.glob("*.json"))), 1)
 
     def test_success_is_idempotent(self) -> None:
         payload = {

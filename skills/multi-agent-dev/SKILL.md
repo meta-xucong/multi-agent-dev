@@ -144,22 +144,19 @@ blockers / next_step / conclusion
 - `blocked`：缺少用户决定、权限、凭据或不可替代的外部条件；
 - `stopped`：受保护停止、需要人工验收或平台 guardrail 结束。
 
-使用随本 Skill 提供的 `scripts/notify_serverchan.py`。当前用户级 Hook 已把 `Stop`、`Interrupt` 和 `SessionEnd` 接到 `hooks/task_terminal_notify.py`：主控最终回复必须在末尾写入一行隐藏的 `MAD_TASK_TERMINAL_V1` 终态标记，`Stop` Hook 会在结束当前回合前自动发送；发送失败会先阻止结束并重试，重复触发由本地 receipt 去重。中断或会话结束则从活动记录发送 `stopped` 补偿通知。发送内容必须包含项目/任务、终态、完成或阻断原因、最重要的验证结果和用户下一步；不得在命令、日志或回复中打印完整 SendKey。脚本沿用 `long-running-task` 的同一凭据和重试语义：先读取 `SCT_SENDKEY`，再读取 `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次。全部重试失败时不得伪称已送达：Hook 会保留待发送记录并提示交付阻断，最终回复必须明确报告失败原因。
+在最终报告前，由主控显式调用随本 Skill 提供的 `scripts/notify_serverchan.py` 发送一次通知；通知字段包含项目/任务、终态、完成或阻断原因、最重要的验证结果和用户下一步。`done` 通知必须提供 `--verification`，或使用含实际结果的显式 `--state-file`；只有测试命令而没有结果不能作为完成证据。**不得在最终回复中输出 `MAD_TASK_TERMINAL_V1` 或其他机器终态标记。**用户级 `Stop` Hook 不把普通回合结束当作任务完成，也不因缺少标记阻塞；它只重试已登记的失败通知。`Interrupt`/`SessionEnd` 在存在活动任务时发送 `stopped` 补偿通知。若本轮曾通过路由 Hook 派发子 Agent，通知命令传入最近一次成功路由的唯一 `task_id`，以便成功后清除对应补偿状态并去重；没有路由派发时省略该参数。脚本沿用 `long-running-task` 的凭据和重试：先读 `SCT_SENDKEY`，再读 `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次。全部重试失败时不得伪称已送达；安全重试或排查凭据/网络后仍失败，必须将通知失败作为交付阻断风险报告。
 
-终态标记格式（放在最终回复末尾，HTML 注释不会显示给用户）：
-
-```text
-<!-- MAD_TASK_TERMINAL_V1 {"task_id":"madv1-task-001","status":"done","title":"任务完成","short":"等待验收","message":"独立审计已通过，必要测试已完成。"} -->
-```
-
-若用户级 Hook 未重启、未在 `/hooks` 中信任、脚本路径不可用或 SendKey 缺失，通知能力视为未启用/交付阻断；主控必须在最终回复中报告，不得只说“已发送”。
+若用户级 Hook 未重启或未在 `/hooks` 中信任，主控仍须直接调用通知脚本，但失败重试和中断补偿 Hook 不可用，应披露这一限制；若通知脚本路径不可用或 SendKey 缺失，则通知未送达，必须作为交付阻断风险报告，不得只说“已发送”。
 
 示例：
 
 ```powershell
 python "$env:USERPROFILE\.codex\skills\multi-agent-dev\skills\multi-agent-dev\scripts\notify_serverchan.py" `
   --project . --status done --title "多 Agent 任务完成，等待验收" `
-  --message "独立审计已通过；请检查最终差异和测试记录。"
+  --verification "python -m unittest discover -s tests -v：64 项通过" `
+  --short "审计和测试已通过" `
+  --message "独立审计已通过；请检查最终差异和测试记录。" `
+  --task-id "madv1_serverchan_20260926_001"
 ```
 
 详细状态映射、失败处理和 `--dry-run` 验证见 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md)。

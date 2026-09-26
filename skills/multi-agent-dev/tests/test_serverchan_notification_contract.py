@@ -36,8 +36,9 @@ class ServerChanNotificationContractTests(unittest.TestCase):
         self.assertIn("blocked", NOTIFICATION_DOC)
         self.assertIn("stopped", NOTIFICATION_DOC)
         self.assertIn("都必须发送一次 ServerChan 通知", SKILL)
-        self.assertIn("MAD_TASK_TERMINAL_V1", SKILL)
-        self.assertIn("Stop", SKILL)
+        self.assertIn("不得在最终回复中输出", SKILL)
+        self.assertNotIn("<!-- MAD_TASK_TERMINAL_V1", SKILL)
+        self.assertIn("notify_serverchan.py", SKILL)
         self.assertIn("默认重试 3 次", SKILL)
         self.assertIn("全部重试失败时不得伪称已送达", SKILL)
 
@@ -48,8 +49,10 @@ class ServerChanNotificationContractTests(unittest.TestCase):
         self.assertIn("--retries", source)
         self.assertIn("--retry-delay-seconds", source)
         self.assertIn("--state-file", source)
+        self.assertIn("--verification", source)
         self.assertIn("if args.state_file else {}", source)
         self.assertIn("choices=[\"done\", \"blocked\", \"stopped\"]", source)
+        self.assertIn("--task-id", source)
         self.assertNotIn("print(args.sendkey)", source)
 
     def test_dry_run_builds_message_without_network(self):
@@ -64,6 +67,8 @@ class ServerChanNotificationContractTests(unittest.TestCase):
                     "done",
                     "--title",
                     "Test",
+                    "--verification",
+                    "mock verification passed",
                     "--message",
                     "dry run",
                     "--sendkey",
@@ -79,7 +84,9 @@ class ServerChanNotificationContractTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertTrue(payload["dry_run"])
         self.assertIn("Status: `done`", payload["desp"])
+        self.assertIn("Latest verification: mock verification passed", payload["desp"])
         self.assertIn("dry run", payload["desp"])
+        self.assertNotIn("MAD_TASK_TERMINAL_V1", payload["desp"])
         self.assertNotIn("TEST_ONLY", completed.stdout)
 
     def test_state_is_opt_in_and_explicit(self):
@@ -90,7 +97,7 @@ class ServerChanNotificationContractTests(unittest.TestCase):
                     {
                         "objective": "explicit objective",
                         "current_phase": "testing",
-                        "tests_run": [{"command": "test command"}],
+                        "tests_run": [{"command": "test command", "result": "passed"}],
                     }
                 ),
                 encoding="utf-8",
@@ -104,7 +111,7 @@ class ServerChanNotificationContractTests(unittest.TestCase):
                     "--state-file",
                     str(state_path),
                     "--status",
-                    "stopped",
+                    "done",
                     "--message",
                     "explicit state",
                     "--sendkey",
@@ -120,7 +127,7 @@ class ServerChanNotificationContractTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertIn("explicit objective", payload["desp"])
         self.assertIn("Current phase: `testing`", payload["desp"])
-        self.assertIn("test command", payload["desp"])
+        self.assertIn("passed (command: test command)", payload["desp"])
 
     def test_timeout_is_retried_instead_of_crashing(self):
         with patch.object(notifier, "send", side_effect=TimeoutError("timed out")) as send:
@@ -130,6 +137,8 @@ class ServerChanNotificationContractTests(unittest.TestCase):
                     ".",
                     "--status",
                     "done",
+                    "--verification",
+                    "retry behavior test",
                     "--message",
                     "retry",
                     "--sendkey",
@@ -142,6 +151,47 @@ class ServerChanNotificationContractTests(unittest.TestCase):
             )
         self.assertEqual(completed, 1)
         self.assertEqual(send.call_count, 3)
+
+    def test_done_requires_concrete_verification(self):
+        with patch.object(notifier, "send") as send:
+            result = notifier.main(
+                ["--status", "done", "--message", "No evidence", "--sendkey", "TEST_ONLY"]
+            )
+        self.assertEqual(result, 2)
+        send.assert_not_called()
+
+    def test_state_command_without_result_does_not_satisfy_done_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            state_path.write_text(
+                json.dumps({"tests_run": [{"command": "python -m unittest"}]}),
+                encoding="utf-8",
+            )
+            with patch.object(notifier, "send") as send:
+                result = notifier.main(
+                    ["--status", "done", "--state-file", str(state_path), "--sendkey", "TEST_ONLY"]
+                )
+        self.assertEqual(result, 2)
+        send.assert_not_called()
+
+    def test_direct_send_registers_and_retires_hook_state_with_task_id(self):
+        with (
+            patch.object(notifier, "send", return_value={"code": 0}) as send,
+            patch.object(notifier, "_register_hook_intent", return_value=1) as register,
+            patch.object(notifier, "_retire_hook_fallback", return_value=1) as retire,
+        ):
+            completed = notifier.main(
+                [
+                    "--project", ".", "--status", "done", "--title", "Task finished",
+                    "--short", "Tests passed", "--message", "Audit and tests passed.",
+                    "--verification", "15 tests passed",
+                    "--sendkey", "TEST_ONLY", "--task-id", "task-001", "--retry-delay-seconds", "0",
+                ]
+            )
+        self.assertEqual(completed, 0)
+        send.assert_called_once()
+        register.assert_called_once()
+        retire.assert_called_once_with("task-001", "done")
 
 
 if __name__ == "__main__":

@@ -129,7 +129,7 @@ blockers / next_step / conclusion
 
 ### 4.3 任务结束通知
 
-只要本 Skill 已用于任务，任务结束、阻断、停止或中断都必须发送一次 ServerChan 微信通知；审计拒收、普通测试失败和监测/诊断只有在本轮仍继续推进时才不发送，一旦本轮停止就按 `blocked`/`stopped` 发送。主控最终回复末尾写入隐藏的 `MAD_TASK_TERMINAL_V1` 标记，用户级 `Stop` Hook 自动调用 `hooks/task_terminal_notify.py`；失败先阻止结束并重试，receipt 负责去重，`Interrupt`/`SessionEnd` 负责补偿。凭据顺序和默认 3 次重试仍为 `SCT_SENDKEY` → `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`。消息只保留项目、状态、摘要、关键验证和用户下一步；完整日志、隐藏推理和密钥不得发送。全部重试失败必须记录为交付阻断风险并在最终回复披露；不得报告为已送达。详细字段与示例见 [ServerChan 任务结束通知开发文档](../docs/serverchan-completion-notification.md)。
+只要本 Skill 已用于任务，任务结束、阻断、停止或中断都必须发送一次 ServerChan 微信通知；审计拒收、普通测试失败和监测/诊断只有在本轮仍继续推进时才不发送，一旦本轮停止就按 `blocked`/`stopped` 发送。主控在最终回复前显式调用 `scripts/notify_serverchan.py`；`done` 必须通过 `--verification` 或带实际 `result` 的 state 记录提供验证证据；最终回复不得输出 `MAD_TASK_TERMINAL_V1` 或其他机器终态标记。用户级 `Stop` Hook 只重试已登记的失败通知，不把普通回合结束当作任务完成，也不因缺少标记阻塞；`Interrupt`/`SessionEnd` 负责中断补偿。若本轮通过路由 Hook 派发过 Agent，传入最近一次成功路由的唯一 `task_id`，让发送脚本登记待发信息，并在发送成功后清除对应补偿状态、写入去重 receipt；没有路由派发时省略。凭据顺序和默认 3 次重试仍为 `SCT_SENDKEY` → `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`。消息只保留项目、状态、摘要、关键验证和用户下一步；完整日志、隐藏推理和密钥不得发送。全部重试失败必须记录为交付阻断风险并在最终回复披露；不得报告为已送达。详细字段与示例见 [ServerChan 任务结束通知开发文档](../docs/serverchan-completion-notification.md)。
 
 ## 5. 模型与推理路由
 

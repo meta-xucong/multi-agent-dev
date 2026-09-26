@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Enforce a ServerChan notification before a multi-agent task stops.
+"""Provide interruption fallback and retry for multi-agent task notifications.
 
-The hook is intentionally small and stateful only at the delivery boundary:
-the final assistant message carries a short terminal marker, the hook sends
-that marker through the bundled notifier, and a local receipt prevents
-duplicates.  A pending record makes a later SessionEnd/Interrupt invocation
-able to retry a failed delivery without retaining credentials.
+Normal completion is sent explicitly by the Skill through the bundled notifier;
+the final assistant response does not need a machine-readable marker. This hook
+keeps legacy marker and pending-record support, and sends a stopped fallback if
+an active task is interrupted or its session ends unexpectedly.
 """
 
 from __future__ import annotations
@@ -61,7 +60,8 @@ def parse_terminal_marker(message: Any) -> dict[str, str] | None:
         if not isinstance(payload, dict):
             return None
         required = {"task_id", "status", "title", "short", "message"}
-        if set(payload) != required:
+        allowed = {frozenset(required), frozenset(required | {"verification"})}
+        if frozenset(payload) not in allowed:
             return None
         task_id = payload.get("task_id")
         status = payload.get("status")
@@ -72,15 +72,21 @@ def parse_terminal_marker(message: Any) -> dict[str, str] | None:
         title = _text(payload.get("title"), MAX_TITLE)
         short = _text(payload.get("short"), MAX_SHORT)
         summary = _text(payload.get("message"), MAX_MESSAGE)
+        verification = _text(payload.get("verification"), MAX_MESSAGE)
         if title is None or short is None or summary is None:
             return None
-        return {
+        if status == "done" and verification is None:
+            return None
+        parsed = {
             "task_id": task_id,
             "status": status,
             "title": title,
             "short": short,
             "message": summary,
         }
+        if verification is not None:
+            parsed["verification"] = verification
+        return parsed
     return None
 
 
@@ -154,29 +160,9 @@ def _pending_record(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _fallback_marker(payload: dict[str, Any]) -> dict[str, str] | None:
-    pending = _pending_record(payload)
+    pending = _pending_terminal(payload)
     if pending:
-        task_id = pending.get("task_id")
-        status = pending.get("status")
-        title = _text(pending.get("title"), MAX_TITLE)
-        short = _text(pending.get("short"), MAX_SHORT)
-        summary = _text(pending.get("message"), MAX_MESSAGE)
-        if (
-            isinstance(task_id, str)
-            and SAFE_ID_RE.fullmatch(task_id) is not None
-            and isinstance(status, str)
-            and status in TERMINAL_STATUSES
-            and title is not None
-            and short is not None
-            and summary is not None
-        ):
-            return {
-                "task_id": task_id,
-                "status": status,
-                "title": title,
-                "short": short,
-                "message": summary,
-            }
+        return pending
     active = _active_record(payload)
     if not active:
         return None
@@ -190,6 +176,105 @@ def _fallback_marker(payload: dict[str, Any]) -> dict[str, str] | None:
         "short": "Codex 多 Agent 任务需要人工查看",
         "message": "任务在会话中断或结束前未提交 done/blocked 终态，已按 stopped 通知。",
     }
+
+
+def _pending_terminal(payload: dict[str, Any]) -> dict[str, str] | None:
+    pending = _pending_record(payload)
+    if not pending:
+        return None
+    task_id = pending.get("task_id")
+    status = pending.get("status")
+    title = _text(pending.get("title"), MAX_TITLE)
+    short = _text(pending.get("short"), MAX_SHORT)
+    summary = _text(pending.get("message"), MAX_MESSAGE)
+    verification = _text(pending.get("verification"), MAX_MESSAGE)
+    if (
+        isinstance(task_id, str)
+        and SAFE_ID_RE.fullmatch(task_id) is not None
+        and isinstance(status, str)
+        and status in TERMINAL_STATUSES
+        and title is not None
+        and short is not None
+        and summary is not None
+        and (status != "done" or verification is not None)
+    ):
+        return {
+            "task_id": task_id,
+            "status": status,
+            "title": title,
+            "short": short,
+            "message": summary,
+            "verification": verification or "",
+        }
+    return None
+
+
+def register_external_intent(
+    task_id: str, status: str, title: str, short: str, message: str, verification: str
+) -> int:
+    """Persist terminal details so Stop/SessionEnd can retry a failed direct send."""
+
+    if SAFE_ID_RE.fullmatch(task_id) is None or status not in TERMINAL_STATUSES:
+        return 0
+    if _text(title, MAX_TITLE) is None or _text(short, MAX_SHORT) is None:
+        return 0
+    if _text(message, MAX_MESSAGE) is None or not ACTIVE_DIR.exists():
+        return 0
+    safe_verification = _text(verification, MAX_MESSAGE)
+    if status == "done" and safe_verification is None:
+        return 0
+    registered = 0
+    for active_path in ACTIVE_DIR.glob("*.json"):
+        active = _read_json(active_path)
+        if not active or active.get("task_id") != task_id:
+            continue
+        session_id = active.get("session_id")
+        if not isinstance(session_id, str) or not session_id.strip():
+            continue
+        context = {"session_id": session_id}
+        key = delivery_key(context, task_id)
+        _write_json(
+            _path(PENDING_DIR, key),
+            {
+                "task_id": task_id,
+                "status": status,
+                "title": title,
+                "short": short,
+                "message": message,
+                "verification": safe_verification or "",
+                "session_id": session_id,
+                "updated_at": int(time.time()),
+            },
+        )
+        registered += 1
+    return registered
+
+
+def mark_external_delivery(task_id: str, status: str) -> int:
+    """Record a successful direct-notifier send and retire matching fallbacks."""
+
+    if SAFE_ID_RE.fullmatch(task_id) is None or status not in TERMINAL_STATUSES:
+        return 0
+    retired = 0
+    if not ACTIVE_DIR.exists():
+        return retired
+    for active_path in ACTIVE_DIR.glob("*.json"):
+        active = _read_json(active_path)
+        if not active or active.get("task_id") != task_id:
+            continue
+        session_id = active.get("session_id")
+        if not isinstance(session_id, str) or not session_id.strip():
+            continue
+        context = {"session_id": session_id}
+        key = delivery_key(context, task_id)
+        _write_json(
+            _path(RECEIPT_DIR, key),
+            {"task_id": task_id, "status": status, "sent_at": int(time.time()), "source": "direct_notifier"},
+        )
+        _remove(_path(PENDING_DIR, key))
+        _remove(active_path)
+        retired += 1
+    return retired
 
 
 def _remove(path: Path) -> None:
@@ -221,6 +306,8 @@ def _run_notifier(marker: dict[str, str], payload: dict[str, Any]) -> tuple[bool
         marker["title"],
         "--short",
         marker["short"],
+        "--verification",
+        marker.get("verification", ""),
         "--message",
         marker["message"],
         "--timeout",
@@ -267,6 +354,7 @@ def deliver(marker: dict[str, str], payload: dict[str, Any]) -> tuple[bool, str]
             "title": marker["title"],
             "short": marker["short"],
             "message": marker["message"],
+            "verification": marker.get("verification", ""),
             "session_id": payload.get("session_id"),
             "updated_at": int(time.time()),
         },
@@ -301,20 +389,6 @@ def _result(*, event: str, success: bool, detail: str, retry_allowed: bool) -> d
     }
 
 
-def _active_stop_result(payload: dict[str, Any]) -> dict[str, Any] | None:
-    if payload.get("hook_event_name") != "Stop":
-        return None
-    if _active_record(payload) is None and _pending_record(payload) is None:
-        return None
-    return {
-        "decision": "block",
-        "reason": (
-            "This marked multi-agent task cannot end without a MAD_TASK_TERMINAL_V1 "
-            "done/blocked/stopped marker in the final response."
-        ),
-    }
-
-
 def handle(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"continue": True, "systemMessage": "ServerChan hook received invalid input."}
@@ -322,10 +396,10 @@ def handle(payload: Any) -> dict[str, Any]:
     if event not in {"Stop", "SessionEnd", "Interrupt"}:
         return {"continue": True}
     marker = parse_terminal_marker(payload.get("last_assistant_message"))
-    if marker is None:
-        active_stop = _active_stop_result(payload)
-        if active_stop is not None:
-            return active_stop
+    if marker is None and event == "Stop":
+        # Retry only a notification already committed to the pending queue.
+        # Active task presence alone is not proof that this assistant turn is terminal.
+        marker = _pending_terminal(payload)
     if marker is None and event in {"SessionEnd", "Interrupt"}:
         marker = _fallback_marker(payload)
     if marker is None:
