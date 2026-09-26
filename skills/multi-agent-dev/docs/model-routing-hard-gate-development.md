@@ -15,7 +15,7 @@
 - 拒绝缺少必要证明、非法阶段、非法字段、全历史继承或不受支持的 Agent 类型。
 - 对没有 marker 的 spawn 保持完全透传，标准输出为空、退出码为 0。
 - 生成不含完整 message、prompt 或其他敏感内容的 `MAD_ROUTE_RECEIPT`，作为可观察的派发凭证。
-- 通过用户级 `hooks.json` 只注册一个同步 `PreToolUse` hook，matcher 覆盖三个直接派发工具，并覆盖 `exec` 包装层用于 fail-closed 检测。
+- 通过用户级 `hooks.json` 只注册一个同步 `PreToolUse` hook，matcher 覆盖四个直接派发工具（含 `collaboration.spawn_agent`），并覆盖 `exec` 包装层用于 fail-closed 检测。
 
 ### 1.2 非目标
 
@@ -98,9 +98,11 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 
 ## 5. Hook 输入、输出与错误码
 
+GPT-6/Codex TUI 当前可能将直接派发工具名暴露为 `collaboration.spawn_agent`；它和三个历史工具名共用完全相同的输入、路由、拒绝和 receipt 语义。该兼容项不改变 marker 仍必须位于 `tool_input.message` 第一非空行的约束。
+
 ### 5.1 输入
 
-同步命令从 stdin 读取一个 JSON object。标准字段为 `tool_name`、外层 `tool_use_id` 和 `tool_input`；直接派发工具的 `tool_input` 必须是 object，且 marker 载体为其中的 `message`。直接处理 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent`；`exec` 只用于检查包装层：普通 `exec` 完全透传，若输入包含可识别的 `spawn_agent`、`multi_agent_v1__spawn_agent` 或 `collaboration.spawn_agent` 调用则返回 `MAD_ROUTE_WRAPPER_UNSUPPORTED`，要求改用直接派发。其他工具直接 stdout 为空、退出 0。未标记的普通 spawn 仍 stdout 为空、退出 0；只有带 marker 或带 `madv1_` task name 的调用才要求安全 `tool_use_id`。JSON 无法解析、顶层不是 object、缺少可识别 tool name 或直接目标工具缺少 object `tool_input` 时，stdout 必须为空，stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID`，退出码 2 fail-closed。
+同步命令从 stdin 读取一个 JSON object。标准字段为 `tool_name`、外层 `tool_use_id` 和 `tool_input`；直接派发工具的 `tool_input` 必须是 object，且 marker 载体为其中的 `message`。直接处理 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 和 `collaboration.spawn_agent`；`exec` 只用于检查包装层：普通 `exec` 完全透传，若输入包含可识别的 `spawn_agent`、`multi_agent_v1__spawn_agent` 或 `collaboration.spawn_agent` 调用则返回 `MAD_ROUTE_WRAPPER_UNSUPPORTED`，要求改用直接派发。其他工具直接 stdout 为空、退出 0。未标记的普通 spawn 仍 stdout 为空、退出 0；只有带 marker 或带 `madv1_` task name 的调用才要求安全 `tool_use_id`。JSON 无法解析、顶层不是 object、缺少可识别 tool name 或直接目标工具缺少 object `tool_input` 时，stdout 必须为空，stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID`，退出码 2 fail-closed。
 
 ### 5.2 允许结果
 
@@ -145,9 +147,9 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 2. 顶层 `model_reasoning_effort` 从 `xhigh` 改为 `high`。
 3. 不新增全局 `[agents]` 默认子 Agent 块，以兼容桌面内置 Codex 与 PATH CLI 两个版本；省略参数时由 Luna High 主控继承只作兜底，本 Skill 仍必须显式参数、marker 和 receipt，复杂主控下遗漏不能放行。
 4. 在既有 `[features]` 新增 `hooks = true`，不改变其他 feature。
-5. 新建用户级 `hooks.json`，根对象为官方 `{ "hooks": { "PreToolUse": [...] } }`，只注册一个同步 `PreToolUse` command；handler 必须有 `command`，并提供 `commandWindows` 的安全引号绝对路径。matcher 覆盖 `Agent|spawn_agent|multi_agent_v1__spawn_agent|exec`；Windows 使用当前 Python 3.12，非 Windows command 可用 `python3`。`exec` 仅用于阻断内层派发包装，不能替代直接派发或生成 receipt。
+5. 新建用户级 `hooks.json`，根对象为官方 `{ "hooks": { "PreToolUse": [...] } }`，只注册一个同步 `PreToolUse` command；handler 必须有 `command`，并提供 `commandWindows` 的安全引号绝对路径。matcher 覆盖 `Agent|spawn_agent|multi_agent_v1__spawn_agent|collaboration\.spawn_agent|exec`；Windows 使用当前 Python 3.12，非 Windows command 可用 `python3`。`exec` 仅用于阻断内层派发包装，不能替代直接派发或生成 receipt。
 
-Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信任该 hook。未信任或未重启时，硬门禁不生效，工作流必须按 fail-closed 处理，不得把“配置文件存在”当作已启用。
+Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信任该 hook。修改 `hooks.json` 后旧 `trusted_hash` 可能失效，必须重新确认当前配置，不能只依据 `enabled=true` 或旧的 trusted 状态判断已启用。未信任或未重启时，硬门禁不生效，工作流必须按 fail-closed 处理，不得把“配置文件存在”当作已启用。
 
 ## 7. 失败回流
 
@@ -168,7 +170,7 @@ Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信�
 | 合法路由 | think escalate；execute simple/escalate；audit simple/escalate | allow、receipt、真值表 model/effort |
 | 修正 | model/effort 遗漏、错误或与真值表不符 | updatedInput 只改必要字段；receipt 分类 requested/enforced/corrected |
 | 幂等 | 已正确设置的合法输入重复运行 | 输出路由与 receipt 稳定，输入语义不漂移 |
-| 工具名 | Agent、spawn_agent、multi_agent_v1__spawn_agent | 三者同一门禁语义 |
+| 工具名 | Agent、spawn_agent、multi_agent_v1__spawn_agent、collaboration.spawn_agent | 四者同一门禁语义 |
 | 包装层 | exec 输入包含可识别嵌套 spawn | deny、`MAD_ROUTE_WRAPPER_UNSUPPORTED`、不回显输入 |
 | marker | JSON 失败、未知字段、缺字段、错误类型、超长字符串、旧 contract_rev | deny、稳定错误码、不回显 message |
 | 语义 | role/gate/stage 不匹配，think simple | deny |

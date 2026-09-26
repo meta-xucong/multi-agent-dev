@@ -26,7 +26,9 @@
 
 ## 模型路由硬门禁
 
-对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的带 marker 派发，使用 `MAD_ROUTE_V1` 真值表和同步 `PreToolUse` Hook：合法输入自动纠正遗漏、错误或与真值表不符的 model/reasoning_effort，在 `hookSpecificOutput.additionalContext` 返回绑定安全 `tool_use_id` 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、阶段、task_name、Agent 类型或全历史 fork 在创建 Agent 前 deny。普通未带 marker 的 spawn stdout 必须为空、退出 0，但 `madv1_` task_name 缺 marker 时 deny。每次派发仍需显式 model/reasoning_effort 和非继承 fork；缺 marker/receipt、实际路由不符或推理强度与真值表不符不得放行。兼容本机桌面与 PATH CLI，不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。Hook 需要重启 Codex 并在 `/hooks` 审阅、信任；未启用时工作流按 fail-closed 处理。Receipt 是派发凭证，不证明下游实际采用模型。具体契约、错误码、测试矩阵和失败回流见 [docs/model-routing-hard-gate-development.md](docs/model-routing-hard-gate-development.md)。
+GPT-6/Codex TUI 可能将直接派发工具暴露为 `collaboration.spawn_agent`；它与其他直接派发工具共享同一 `MAD_ROUTE_V1`、模型真值表、Hook 和 receipt 约束。未收到 receipt 的子任务不得视为通过。
+
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 和 `collaboration.spawn_agent` 的带 marker 派发，使用 `MAD_ROUTE_V1` 真值表和同步 `PreToolUse` Hook：合法输入自动纠正遗漏、错误或与真值表不符的 model/reasoning_effort，在 `hookSpecificOutput.additionalContext` 返回绑定安全 `tool_use_id` 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、阶段、task_name、Agent 类型或全历史 fork 在创建 Agent 前 deny。普通未带 marker 的 spawn stdout 必须为空、退出 0，但 `madv1_` task_name 缺 marker 时 deny。每次派发仍需显式 model/reasoning_effort 和非继承 fork；缺 marker/receipt、实际路由不符或推理强度与真值表不符不得放行。兼容本机桌面与 PATH CLI，不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。Hook 需要重启 Codex 并在 `/hooks` 审阅、信任；修改 `hooks.json` 后旧信任记录可能失效，`/hooks` 必须重新确认当前配置，不能只看到旧的 trusted 状态。未启用时工作流按 fail-closed 处理。Receipt 是派发凭证，不证明下游实际采用模型。具体契约、错误码、测试矩阵和失败回流见 [docs/model-routing-hard-gate-development.md](docs/model-routing-hard-gate-development.md)。
 
 交接安全门：更换写入 Agent 前必须停止并确认旧 Agent 已 inactive/completed/failed，记录 `WRITER_STATUS` 和证据；停止失败、状态未知、旧 Agent 仍活动或工作区状态无法确认时，禁止派发替代写入者。进入 `ACCEPTED` 前还必须有固定版本、通过的必需测试和独立 `AUDIT_OWNER` 审计；执行中或证据不足只能保持未放行。
 
