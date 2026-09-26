@@ -22,6 +22,7 @@ ERROR_PREFIX = "MAD_ROUTE_ERROR"
 POLICY_REV = "v1.3.1-route-guard"
 HOOK_EVENT_NAME = "PreToolUse"
 TARGET_TOOLS = frozenset({"Agent", "spawn_agent", "multi_agent_v1__spawn_agent"})
+WRAPPER_TOOLS = frozenset({"exec"})
 BUILTIN_AGENT_TYPES = frozenset({"worker", "explorer", "default"})
 ALLOWED_ROLES = frozenset({"think", "execute", "audit"})
 ALLOWED_GATES = frozenset({"SIMPLE_PROVEN", "ESCALATE_REQUIRED"})
@@ -41,6 +42,9 @@ ROUTE_TABLE: dict[tuple[str, str], tuple[str, str, str]] = {
 
 _TASK_NAME_RE = re.compile(
     r"^madv1_(?P<role>think|execute|audit)_(?P<gate>simple|escalate)_(?P<slug>[a-z0-9]+(?:[_-][a-z0-9]+)*)$"
+)
+_NESTED_SPAWN_RE = re.compile(
+    r"(?:\btools\.)?(?:multi_agent_v1__spawn_agent|collaboration\.spawn_agent|spawn_agent)\s*\("
 )
 
 
@@ -281,6 +285,29 @@ def _deny_result(code: str) -> dict[str, Any]:
     }
 
 
+def _guard_exec_wrapper(tool_input: Any) -> tuple[str, dict[str, Any] | None, int]:
+    """Fail closed when a JS/exec wrapper tries to spawn an Agent.
+
+    PreToolUse sees the outer ``exec`` call, not the nested collaboration
+    call.  It therefore cannot safely rewrite the nested model or effort.
+    Ordinary exec calls remain untouched; a wrapper containing a recognizable
+    spawn call is denied so the caller must use a directly hookable tool.
+    """
+
+    if isinstance(tool_input, str):
+        text = tool_input
+    elif isinstance(tool_input, Mapping):
+        try:
+            text = json.dumps(tool_input, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError):
+            text = ""
+    else:
+        text = ""
+    if _NESTED_SPAWN_RE.search(text):
+        return "deny", _deny_result("MAD_ROUTE_WRAPPER_UNSUPPORTED"), 0
+    return "passthrough", None, 0
+
+
 def guard_payload(payload: Any) -> tuple[str, dict[str, Any] | None, int]:
     """Guard one decoded hook payload.
 
@@ -294,6 +321,8 @@ def guard_payload(payload: Any) -> tuple[str, dict[str, Any] | None, int]:
     tool_name = payload.get("tool_name")
     if not isinstance(tool_name, str):
         return "deny", _deny_result("MAD_ROUTE_INPUT_INVALID"), 2
+    if tool_name in WRAPPER_TOOLS:
+        return _guard_exec_wrapper(payload.get("tool_input"))
     if tool_name not in TARGET_TOOLS:
         return "passthrough", None, 0
     tool_input = payload.get("tool_input")

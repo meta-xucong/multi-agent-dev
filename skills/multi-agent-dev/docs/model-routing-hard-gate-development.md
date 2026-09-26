@@ -15,14 +15,14 @@
 - 拒绝缺少必要证明、非法阶段、非法字段、全历史继承或不受支持的 Agent 类型。
 - 对没有 marker 的 spawn 保持完全透传，标准输出为空、退出码为 0。
 - 生成不含完整 message、prompt 或其他敏感内容的 `MAD_ROUTE_RECEIPT`，作为可观察的派发凭证。
-- 通过用户级 `hooks.json` 只注册一个同步 `PreToolUse` hook，matcher 仅覆盖本轮三个派发工具名。
+- 通过用户级 `hooks.json` 只注册一个同步 `PreToolUse` hook，matcher 覆盖三个直接派发工具，并覆盖 `exec` 包装层用于 fail-closed 检测。
 
 ### 1.2 非目标
 
 - 不自动切换已经运行的主会话模型；启动时不能证明主控模型符合要求时，Skill 必须披露限制并在正确配置的新任务中继续。
 - 不实现自定义 Agent TOML、插件安装器、模型发现、成本估算或任何新的 Agent 类型体系。
 - 不读 transcript、不保存 prompt/message、不落日志、不调用网络或外部服务。
-- 不改变非 spawn 工具，不给旧式 schema 盲加字段，不改变现有业务状态、事件、权限或持久化语义。
+- 不改变普通 `exec` 工具；只对其包含可识别嵌套 Agent 派发的包装调用 fail-closed，不给旧式 schema 盲加字段，不改变现有业务状态、事件、权限或持久化语义。
 - 不以 hook 替代独立审计；缺 receipt、路由不符或推理强度与真值表不符的结果不得放行。
 
 ## 2. 故障证据抽象
@@ -30,7 +30,7 @@
 此前问题抽象为三个可观察故障面：
 
 1. **配置漂移**：顶层推理强度或子 Agent 默认值无法证明与职责要求一致。
-2. **派发覆盖**：调用者遗漏或错误设置 `model`/`reasoning_effort`，或者通过 `agent_type`、fork 继承选项绕过约束。
+2. **派发覆盖**：调用者遗漏或错误设置 `model`/`reasoning_effort`，或者通过 `agent_type`、fork 继承选项绕过约束；把派发嵌入 `exec`/JS 包装层时，Hook 看不到内层输入，也不能安全改写模型。
 3. **审计缺口**：合法派发没有稳定、脱敏的路由凭证；非法 marker 不能在创建 Agent 前同步拒绝。
 
 硬门禁只解决可在 `PreToolUse` 输入中证明的部分：解析 marker、计算真值表、校正已识别字段、拒绝危险继承和返回 receipt。它不声称证明下游平台一定采用了更新后的路由，也不声称能观察已经运行的 Agent。
@@ -100,7 +100,7 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 
 ### 5.1 输入
 
-同步命令从 stdin 读取一个 JSON object。标准字段为 `tool_name`、外层 `tool_use_id` 和 `tool_input`；`tool_input` 必须是 object，且 marker 载体为其中的 `message`。只处理 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent`；其他工具直接 stdout 为空、退出 0。未标记的普通 spawn 仍 stdout 为空、退出 0；只有带 marker 或带 `madv1_` task name 的调用才要求安全 `tool_use_id`。JSON 无法解析、顶层不是 object、缺少可识别 tool name 或目标工具缺少 object `tool_input` 时，stdout 必须为空，stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID`，退出码 2 fail-closed。
+同步命令从 stdin 读取一个 JSON object。标准字段为 `tool_name`、外层 `tool_use_id` 和 `tool_input`；直接派发工具的 `tool_input` 必须是 object，且 marker 载体为其中的 `message`。直接处理 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent`；`exec` 只用于检查包装层：普通 `exec` 完全透传，若输入包含可识别的 `spawn_agent`、`multi_agent_v1__spawn_agent` 或 `collaboration.spawn_agent` 调用则返回 `MAD_ROUTE_WRAPPER_UNSUPPORTED`，要求改用直接派发。其他工具直接 stdout 为空、退出 0。未标记的普通 spawn 仍 stdout 为空、退出 0；只有带 marker 或带 `madv1_` task name 的调用才要求安全 `tool_use_id`。JSON 无法解析、顶层不是 object、缺少可识别 tool name 或直接目标工具缺少 object `tool_input` 时，stdout 必须为空，stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID`，退出码 2 fail-closed。
 
 ### 5.2 允许结果
 
@@ -133,6 +133,7 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 - `MAD_ROUTE_FORK_INHERIT_FORBIDDEN`
 - `MAD_ROUTE_FORK_CONTEXT_FORBIDDEN`
 - `MAD_ROUTE_TOOL_USE_ID_INVALID`
+- `MAD_ROUTE_WRAPPER_UNSUPPORTED`
 
 非法 stdin、协议结构错误或未捕获内部异常不得向 stdout 写 JSON：分别在 stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID` 或 `MAD_ROUTE_ERROR MAD_ROUTE_GUARD_FAILURE`，退出码 2；不回显 stdin、异常文本或路径。任何拒绝都不得创建 Agent；`additionalContext` 缺少 receipt 的 allow 不得进入 `ACCEPTED`。
 
@@ -144,13 +145,15 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 2. 顶层 `model_reasoning_effort` 从 `xhigh` 改为 `high`。
 3. 不新增全局 `[agents]` 默认子 Agent 块，以兼容桌面内置 Codex 与 PATH CLI 两个版本；省略参数时由 Luna High 主控继承只作兜底，本 Skill 仍必须显式参数、marker 和 receipt，复杂主控下遗漏不能放行。
 4. 在既有 `[features]` 新增 `hooks = true`，不改变其他 feature。
-5. 新建用户级 `hooks.json`，根对象为官方 `{ "hooks": { "PreToolUse": [...] } }`，只注册一个同步 `PreToolUse` command；handler 必须有 `command`，并提供 `commandWindows` 的安全引号绝对路径。matcher 精确覆盖 `Agent|spawn_agent|multi_agent_v1__spawn_agent`；Windows 使用当前 Python 3.12，非 Windows command 可用 `python3`。
+5. 新建用户级 `hooks.json`，根对象为官方 `{ "hooks": { "PreToolUse": [...] } }`，只注册一个同步 `PreToolUse` command；handler 必须有 `command`，并提供 `commandWindows` 的安全引号绝对路径。matcher 覆盖 `Agent|spawn_agent|multi_agent_v1__spawn_agent|exec`；Windows 使用当前 Python 3.12，非 Windows command 可用 `python3`。`exec` 仅用于阻断内层派发包装，不能替代直接派发或生成 receipt。
 
 Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信任该 hook。未信任或未重启时，硬门禁不生效，工作流必须按 fail-closed 处理，不得把“配置文件存在”当作已启用。
 
 ## 7. 失败回流
 
 - 缺 marker/receipt、实际路由不符、推理强度与真值表不符或 hook 未启用：结果不得放行，记录为门禁失败并重新派发。
+- 通过 `exec`/JS 包装层发起的嵌套派发：在 Agent 创建前拒绝，不能把外层 `exec` 的通过当作内层 receipt；改用直接 `spawn_agent` 后重新走同一 Hook。
+- 当前环境若只有包装派发入口而没有可直接匹配的 Agent 工具，记录 `ROUTE_UNAVAILABLE` 并暂停派发；不能用旧模型的显式参数或“已启动”状态替代门禁证据。
 - 标记 JSON/字段/阶段/继承非法：保持同步 deny，不创建 Agent；修正原始派发输入后重新走同一 hook。
 - 若错误 Agent 已启动：立即停止或取消其后续写入，确认状态为 `inactive`、`completed` 或 `failed` 且无进行中写入，记录 `WRITER_STATUS` 与停止证据；再按正确 marker、模型、推理强度和非继承 fork 重新派发。不能以口头声明或额度耗尽代替停止证据。
 - 若只缺测试证据而代码未变，补证后由独立审计复核同一版本；若需要改变契约、权限、外部副作用或文件范围，回到契约回流并重新冻结。
@@ -166,6 +169,7 @@ Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信�
 | 修正 | model/effort 遗漏、错误或与真值表不符 | updatedInput 只改必要字段；receipt 分类 requested/enforced/corrected |
 | 幂等 | 已正确设置的合法输入重复运行 | 输出路由与 receipt 稳定，输入语义不漂移 |
 | 工具名 | Agent、spawn_agent、multi_agent_v1__spawn_agent | 三者同一门禁语义 |
+| 包装层 | exec 输入包含可识别嵌套 spawn | deny、`MAD_ROUTE_WRAPPER_UNSUPPORTED`、不回显输入 |
 | marker | JSON 失败、未知字段、缺字段、错误类型、超长字符串、旧 contract_rev | deny、稳定错误码、不回显 message |
 | 语义 | role/gate/stage 不匹配，think simple | deny |
 | schema | task_name 前缀/role/gate/slug mismatch、madv1 task 缺 marker；fork_turns all/正整数/字符串正整数/非法；fork_context true/非法；fork_turns+fork_context 混合；内置 agent_type/自定义值 | 按契约 allow 修正或 deny |

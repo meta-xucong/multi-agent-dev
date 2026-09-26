@@ -197,7 +197,11 @@ python "$env:USERPROFILE\.codex\skills\multi-agent-dev\skills\multi-agent-dev\sc
 
 ### 5.1 `MAD_ROUTE_V1` 派发硬门禁
 
-对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-6-sol/xhigh`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或与真值表不符，都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
+对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的直接派发，启用用户级同步 `PreToolUse` Hook 后，marker 必须是 `message` 第一非空行的单行 JSON，且外层 `tool_use_id`、marker `task_id` 使用安全短 ID、`contract_rev` 精确为当前策略版本。合法组合按开发文档真值表路由：`think + ESCALATE_REQUIRED` 使用 `gpt-6-sol/xhigh`，`execute`/`audit + SIMPLE_PROVEN` 使用 `gpt-6-luna/high`，`execute`/`audit + ESCALATE_REQUIRED` 使用 `gpt-6-luna/max`；`think + SIMPLE_PROVEN` 和角色/阶段不匹配均拒绝。合法输入的 model/reasoning_effort 无论遗漏、错误或与真值表不符，都由 `updatedInput` 改为真值表值，并在 `hookSpecificOutput.additionalContext` 返回绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、Agent 类型、task_name 或全历史 fork 同步 deny。没有 marker 的普通 spawn 必须 stdout 为空、退出 0，不影响其他 Skill；以 `madv1_` 开头的 task_name 缺 marker 时拒绝。
+
+不得把 Agent 派发藏在 `functions.exec`、JS 调度或其他包装调用中：PreToolUse 只能看到外层 `exec`，无法安全修改内层模型/思考强度。用户级 Hook 同时检查 `exec`；普通命令透传，检测到可识别的嵌套 spawn 就以 `MAD_ROUTE_WRAPPER_UNSUPPORTED` 拒绝。包装层被拒绝后必须改用直接派发，并以新 receipt 和子会话实际 provenance 验证；不能把外层 exec 成功当作路由成功。
+
+如果当前桌面/CLI 只暴露包装后的派发入口、没有可直接匹配并携带 `model`、`reasoning_effort`、marker 和非继承 fork 的 Agent 工具，视为路由能力不可用：暂停派发并报告 `ROUTE_UNAVAILABLE`，不要用显式写入旧模型参数或“子任务已启动”来代替门禁证据。
 
 Hook 只兼容内置 `worker`、`explorer`、`default`，不建立自定义 Agent 配置；当前 schema 的 task_name 必须已经匹配与 marker 一致的 `madv1_<role>_<simple|escalate>_<slug>`，不得自动改写，缺失 `fork_turns` 可补 `none`，`all`、正整数、字符串正整数及其他值拒绝；旧式显式 `fork_context=true` 拒绝，`false` 保留，`fork_turns` 与 `fork_context` 同时出现的混合 schema 直接拒绝，无法识别的 schema 不盲加字段。每次人工或程序派发仍必须显式提供目标 model/reasoning_effort 和适用平台的非继承 fork，即使 Hook 会做最小校正；缺 marker/receipt、推理强度与当前真值表不符或实际路由不符，结果不得放行。
 

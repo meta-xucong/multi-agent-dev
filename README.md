@@ -1,12 +1,12 @@
 # meta-xucong Skills
 
-多平台 AI 辅助开发 Skills 仓库，支持 **Codex** (ChatGPT 5.6) 和 **Claude Code** (Claude 5)。每个 Skill 都放在 `skills/<skill-name>/` 下，彼此独立，便于单独安装、审查和迭代。
+多平台 AI 辅助开发 Skills 仓库，支持 **Codex** (GPT-6) 和 **Claude Code** (Claude 5)。每个 Skill 都放在 `skills/<skill-name>/` 下，彼此独立，便于单独安装、审查和迭代。
 
 ## 🔀 平台选择指南
 
 | 平台 | 适用版本 | 说明 |
 |---|---|---|
-| **Codex** | `skills/multi-agent-dev/`<br>`skills/context-lean/` | 原始版本，使用 ChatGPT 5.6 (Sol/Luna)，含完整 Hook 系统 |
+| **Codex** | `skills/multi-agent-dev/`<br>`skills/context-lean/` | 原始版本，使用 GPT-6 (Sol/Luna)，含完整 Hook 系统 |
 | **Claude Code** | `skills/multi-agent-audit-claude-code/` | 新增版本，使用 Claude 5 (Opus/Sonnet/Haiku)，基于 context-lean 原则 |
 
 ## 技能目录
@@ -15,8 +15,8 @@
 
 | Skill | 用途 | 模型要求 | 入口 |
 | --- | --- | --- | --- |
-| `multi-agent-dev` | 按开发文档组织主控、按需思考、最小执行与独立审计，以证据控制范围和验收；长任务按需伴随 `context-lean` | ChatGPT 5.6 (Sol/Luna) | [`skills/multi-agent-dev/SKILL.md`](skills/multi-agent-dev/SKILL.md) |
-| `context-lean` | 优化 Codex 长任务的上下文膨胀、主动压缩、压缩前状态保存和压缩后恢复 | ChatGPT 5.6 | [`skills/context-lean/SKILL.md`](skills/context-lean/SKILL.md) |
+| `multi-agent-dev` | 按开发文档组织主控、按需思考、最小执行与独立审计，以证据控制范围和验收；长任务按需伴随 `context-lean` | GPT-6 (Sol/Luna) | [`skills/multi-agent-dev/SKILL.md`](skills/multi-agent-dev/SKILL.md) |
+| `context-lean` | 优化 Codex 长任务的上下文膨胀、主动压缩、压缩前状态保存和压缩后恢复 | GPT-6 | [`skills/context-lean/SKILL.md`](skills/context-lean/SKILL.md) |
 
 ### Claude Code 平台
 
@@ -43,9 +43,9 @@
 ### Codex 技术栈
 
 - **模型要求**:
-  - `gpt-5.6-sol/max` (思考 Agent，复杂设计决策)
-  - `gpt-5.6-luna/high` (执行 Agent，简单任务)
-  - `gpt-5.6-luna/max` (执行/审计 Agent，复杂任务)
+  - `gpt-6-sol/xhigh` (思考 Agent，复杂设计决策)
+  - `gpt-6-luna/high` (执行 Agent，简单任务)
+  - `gpt-6-luna/max` (执行/审计 Agent，复杂任务)
 
 - **核心依赖**:
   - Codex 多 Agent 协作 API: `spawn_agent`, `wait_threads`, `read_thread`, `closeAgent`
@@ -146,7 +146,7 @@ ln -s $(pwd)/multi-agent-dev/skills/multi-agent-audit-claude-code ~/.claude/skil
 
 **最后更新**: 2026-09-22  
 **适配平台**: 
-- Codex 2.x + ChatGPT 5.6 系列  
+- Codex 2.x + GPT-6 系列
 - Claude Code 2.x + Claude 5 系列  
 
 **前置依赖**:

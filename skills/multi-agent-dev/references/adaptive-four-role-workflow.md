@@ -160,6 +160,8 @@ blockers / next_step / conclusion
 
 对 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 的派发，用户级同步 `PreToolUse` Hook 只处理 `message` 第一非空行带 `MAD_ROUTE_V1` 的输入；没有 marker 的普通 spawn 必须 stdout 为空、退出 0，保持其他 Skill 透传，但以 `madv1_` 开头的 task_name 缺 marker 时 deny。标记调用必须带安全 `tool_use_id`，marker 的 `task_id` 和当前 `contract_rev` 也要通过精确校验。marker 合法性、角色/阶段配对和路由真值表见开发文档，合法输入的 `model`/`reasoning_effort` 必须由 `updatedInput` 覆盖到真值表值，并在 `hookSpecificOutput.additionalContext` 产生绑定 tool_use_id 的脱敏 `MAD_ROUTE_RECEIPT`；非法 marker、字段、阶段、gate、Agent 类型、task_name 或全历史 fork 必须在创建 Agent 前同步 deny。
 
+不得通过 `functions.exec` 或 JS 包装层间接派发 Agent。Hook 对普通 `exec` 透传，但发现可识别的嵌套 spawn 会以 `MAD_ROUTE_WRAPPER_UNSUPPORTED` 拒绝；包装调用没有 receipt，必须改用可直接匹配的派发工具并核对新子会话的实际模型。若平台只提供包装入口，记录 `ROUTE_UNAVAILABLE` 并暂停派发。
+
 每次派发必须显式携带目标 model、reasoning_effort 和适用平台的非继承 fork；Hook 的最小自动修正不是放宽要求。守卫兼容内置 `worker`、`explorer`、`default`，不扩展自定义 Agent 配置；当前 task_name 必须是与 marker 一致的合法 `madv1_<role>_<simple|escalate>_<slug>`，不能自动改名，缺失 fork_turns 可补 `none`，all/正整数/字符串正整数/其他值拒绝，旧式显式 `fork_context=true` 拒绝，fork_turns 与 fork_context 同时出现的混合 schema 直接拒绝。配置不使用全局 `[agents].default_subagent_*`；省略参数时 Luna High 主控继承只作兜底，复杂主控下遗漏不能放行。出现缺 marker/receipt、推理强度与真值表不符或实际路由不符时，结果不得放行；receipt 不证明下游实际采用模型。错误 Agent 已启动时按停止、状态确认、记录 `WRITER_STATUS`、正确 marker 重新派发的失败回流执行。Hook 未重启或未通过 `/hooks` 信任时视为未启用并 fail-closed；不能自动切换已运行主会话模型。
 
 ## 6. 可观察审计与过度思考检查

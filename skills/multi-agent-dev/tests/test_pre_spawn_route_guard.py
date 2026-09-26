@@ -50,6 +50,21 @@ def payload(
 
 
 class RouteGuardPureTests(unittest.TestCase):
+    def test_exec_wrapper_with_nested_spawn_is_denied(self) -> None:
+        nested = "const r = await tools.multi_agent_v1__spawn_agent({message: 'MAD_ROUTE_V1 ...'});"
+        action, output, exit_code = guard.guard_payload(
+            payload(tool_name="exec", tool_input=nested)
+        )
+        self.assertEqual((action, exit_code), ("deny", 0))
+        assert output is not None
+        self.assertIn("MAD_ROUTE_WRAPPER_UNSUPPORTED", json.dumps(output))
+        self.assertNotIn("multi_agent_v1__spawn_agent", json.dumps(output))
+
+    def test_exec_without_nested_spawn_is_exact_passthrough(self) -> None:
+        original = {"cmd": "Get-Content -Raw SKILL.md", "model": "gpt-5.6-luna"}
+        action, output, exit_code = guard.guard_payload(payload(tool_name="exec", tool_input=original))
+        self.assertEqual((action, output, exit_code), ("passthrough", None, 0))
+
     def test_unmarked_spawn_is_exact_passthrough(self) -> None:
         original = payload(tool_input={"message": "ordinary task", "model": "custom", "extra": {"a": 1}})
         action, output, exit_code = guard.guard_payload(deepcopy(original))
