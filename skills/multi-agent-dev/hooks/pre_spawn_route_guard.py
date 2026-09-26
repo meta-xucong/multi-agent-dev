@@ -378,6 +378,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if action == "passthrough":
         return 0
+    if action == "allow":
+        # The route guard is also the earliest reliable signal that this
+        # session has entered a marked multi-agent task.  Registration is
+        # best-effort so a local state-directory failure never weakens the
+        # model-route decision itself.
+        try:
+            tool_input = payload.get("tool_input")
+            marker = parse_marker(tool_input.get("message")) if isinstance(tool_input, dict) else None
+            if marker is not None:
+                from task_terminal_notify import register_active_session
+
+                register_active_session(payload, marker.task_id)
+        except Exception:
+            pass
     assert result is not None
     sys.stdout.write(json.dumps(result, ensure_ascii=True, separators=(",", ":"), sort_keys=True))
     sys.stdout.write("\n")

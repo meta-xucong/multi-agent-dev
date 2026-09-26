@@ -34,7 +34,7 @@
 
 监测与静默：正式开发默认 `MONITOR_MODE=DELIVERY_SILENT`，不发送周期性心跳或重复无变化消息；只有用户明确要求监测/诊断运行中会话时才启用 `MONITOR_MODE=OBSERVE`。监测模式在基线、子 Agent 交接、长操作边界、状态冲突和最终结论处发送结构化 `STATUS_REPORT_V1`，且必须有工具事件、文件变化、测试结果或报告等活动凭证；UI 标签或口头声明不能单独证明子 Agent 正在工作。
 
-任务真正结束或需要用户接管时，实施任务发送一次 ServerChan 微信通知；中间返工、普通失败和监测/诊断任务不推送。通知使用 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md) 与随 Skill 提供的 `scripts/notify_serverchan.py`，复用 `SCT_SENDKEY` / `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次；通知失败必须作为交付风险报告。
+只要本 Skill 已用于任务，任务结束、阻断、停止或中断都必须发送一次 ServerChan 微信通知。用户级 `Stop`/`Interrupt`/`SessionEnd` Hook 会调用 `hooks/task_terminal_notify.py`，终态通知失败会先重试并阻止正常结束；重复触发由 receipt 去重。最终回复末尾必须带隐藏的 `MAD_TASK_TERMINAL_V1` 标记，否则不能把任务报告为已交付。通知使用 [ServerChan 任务结束通知开发文档](docs/serverchan-completion-notification.md) 与随 Skill 提供的 `scripts/notify_serverchan.py`，复用 `SCT_SENDKEY` / `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次；通知失败必须作为交付阻断风险报告。
 
 ## 安装与使用
 
@@ -79,7 +79,7 @@ git pull --ff-only
 ```text
 git diff --check
 git diff
-git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md docs/context-lean-companion-development.md docs/serverchan-completion-notification.md scripts/notify_serverchan.py tests/test_orchestration_recovery_contract.py tests/test_context_companion_contract.py tests/test_serverchan_notification_contract.py
+git add -- SKILL.md agents/openai.yaml README.md references/adaptive-four-role-workflow.md docs/stalled-orchestration-recovery-development.md docs/context-lean-companion-development.md docs/serverchan-completion-notification.md hooks/task_terminal_notify.py scripts/notify_serverchan.py tests/test_orchestration_recovery_contract.py tests/test_context_companion_contract.py tests/test_serverchan_notification_contract.py tests/test_task_terminal_notify.py
 git commit -m "docs: refine development workflow"
 git push origin main
 ```

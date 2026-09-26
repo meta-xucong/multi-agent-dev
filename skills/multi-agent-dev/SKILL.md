@@ -1,6 +1,6 @@
 ---
 name: multi-agent-dev
-description: "按开发文档组织主控、按需思考、最小执行与独立审计的自适应协作，控制范围漂移、过度开发和硬约束违规，以可复现证据验收；长任务按条件启用 context-lean，任务终态可按规则发送 ServerChan 微信提醒。用户要求多 Agent/子智能体协作开发、开发与审计/纠察分离，或明确要求按此工作流实施或审查任务时使用。不要仅因普通编码、代码解释或讨论多 Agent 概念而自动触发；显式用于诊断或评审时保持只读。"
+description: "按开发文档组织主控、按需思考、最小执行与独立审计的自适应协作，控制范围漂移、过度开发和硬约束违规，以可复现证据验收；长任务按条件启用 context-lean，任务终态必须通过 Hook 发送 ServerChan 微信提醒。用户要求多 Agent/子智能体协作开发、开发与审计/纠察分离，或明确要求按此工作流实施或审查任务时使用。不要仅因普通编码、代码解释或讨论多 Agent 概念而自动触发；显式用于诊断或评审时保持只读。"
 ---
 
 # 多 Agent 协作开发
@@ -138,13 +138,21 @@ blockers / next_step / conclusion
 
 ### 4.3 任务结束后的 ServerChan 微信通知
 
-对已授权的实施任务，只有在任务真正进入终态或需要用户接管时发送一次 ServerChan 通知；中间阶段、普通测试失败、审计拒收后的范围内返工和监测/诊断任务不发送，避免把工作流变成消息噪声。终态使用：
+只要本 Skill 已用于一个任务，任务结束、阻断、受保护停止或被用户中断时都必须发送一次 ServerChan 通知；不得把“监测/诊断”“普通测试失败”或“审计拒收”作为静默例外。尚未结束的范围内返工、阶段交接和测试重跑不发送；一旦本轮不再继续推进，就按 `blocked` 或 `stopped` 发送。终态使用：
 
 - `done`：目标、必要测试、独立审计和最终证据均完成；
 - `blocked`：缺少用户决定、权限、凭据或不可替代的外部条件；
 - `stopped`：受保护停止、需要人工验收或平台 guardrail 结束。
 
-使用随本 Skill 提供的 `scripts/notify_serverchan.py`，发送前必须包含项目/任务、终态、完成或阻断原因、最重要的验证结果和用户下一步。脚本沿用 `long-running-task` 的同一凭据和重试语义：先读取 `SCT_SENDKEY`，再读取 `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`；不得在命令、日志或回复中打印完整 SendKey。默认重试 3 次；全部失败时仍须在最终回复中报告“通知失败”及错误，不能把失败伪装成已送达。通知成功或明确记录交付阻断后，才可向用户报告该终态已完成。
+使用随本 Skill 提供的 `scripts/notify_serverchan.py`。当前用户级 Hook 已把 `Stop`、`Interrupt` 和 `SessionEnd` 接到 `hooks/task_terminal_notify.py`：主控最终回复必须在末尾写入一行隐藏的 `MAD_TASK_TERMINAL_V1` 终态标记，`Stop` Hook 会在结束当前回合前自动发送；发送失败会先阻止结束并重试，重复触发由本地 receipt 去重。中断或会话结束则从活动记录发送 `stopped` 补偿通知。发送内容必须包含项目/任务、终态、完成或阻断原因、最重要的验证结果和用户下一步；不得在命令、日志或回复中打印完整 SendKey。脚本沿用 `long-running-task` 的同一凭据和重试语义：先读取 `SCT_SENDKEY`，再读取 `%USERPROFILE%\.codex\secrets\serverchan_sendkey.txt`，默认重试 3 次。全部重试失败时不得伪称已送达：Hook 会保留待发送记录并提示交付阻断，最终回复必须明确报告失败原因。
+
+终态标记格式（放在最终回复末尾，HTML 注释不会显示给用户）：
+
+```text
+<!-- MAD_TASK_TERMINAL_V1 {"task_id":"madv1-task-001","status":"done","title":"任务完成","short":"等待验收","message":"独立审计已通过，必要测试已完成。"} -->
+```
+
+若用户级 Hook 未重启、未在 `/hooks` 中信任、脚本路径不可用或 SendKey 缺失，通知能力视为未启用/交付阻断；主控必须在最终回复中报告，不得只说“已发送”。
 
 示例：
 

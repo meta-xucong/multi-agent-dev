@@ -49,7 +49,7 @@
 
 - **核心依赖**:
   - Codex 多 Agent 协作 API: `spawn_agent`, `wait_threads`, `read_thread`, `closeAgent`
-  - Codex Hook 系统: `PreToolUse`, `PreCompact`, `SessionStart`, `PostCompact`
+  - Codex Hook 系统: `PreToolUse`, `Stop`, `Interrupt`, `SessionEnd`
   - `MAD_ROUTE_V1` 模型路由硬门禁
 
 ### Claude Code 技术栈

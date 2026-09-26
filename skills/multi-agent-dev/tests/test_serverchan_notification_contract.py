@@ -6,6 +6,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import notify_serverchan as notifier  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,9 +35,11 @@ class ServerChanNotificationContractTests(unittest.TestCase):
         self.assertIn("done", NOTIFICATION_DOC)
         self.assertIn("blocked", NOTIFICATION_DOC)
         self.assertIn("stopped", NOTIFICATION_DOC)
-        self.assertIn("监测/诊断任务不发送", SKILL)
+        self.assertIn("都必须发送一次 ServerChan 通知", SKILL)
+        self.assertIn("MAD_TASK_TERMINAL_V1", SKILL)
+        self.assertIn("Stop", SKILL)
         self.assertIn("默认重试 3 次", SKILL)
-        self.assertIn("才可向用户报告该终态已完成", SKILL)
+        self.assertIn("全部重试失败时不得伪称已送达", SKILL)
 
     def test_notification_script_preserves_retry_and_secret_contract(self):
         source = SCRIPT.read_text(encoding="utf-8")
@@ -113,6 +121,27 @@ class ServerChanNotificationContractTests(unittest.TestCase):
         self.assertIn("explicit objective", payload["desp"])
         self.assertIn("Current phase: `testing`", payload["desp"])
         self.assertIn("test command", payload["desp"])
+
+    def test_timeout_is_retried_instead_of_crashing(self):
+        with patch.object(notifier, "send", side_effect=TimeoutError("timed out")) as send:
+            completed = notifier.main(
+                [
+                    "--project",
+                    ".",
+                    "--status",
+                    "done",
+                    "--message",
+                    "retry",
+                    "--sendkey",
+                    "TEST_ONLY",
+                    "--retries",
+                    "3",
+                    "--retry-delay-seconds",
+                    "0",
+                ]
+            )
+        self.assertEqual(completed, 1)
+        self.assertEqual(send.call_count, 3)
 
 
 if __name__ == "__main__":

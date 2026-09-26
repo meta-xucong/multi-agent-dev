@@ -160,7 +160,7 @@ def main(argv: list[str]) -> int:
             if result.get("code") == 0:
                 print(json.dumps({"ok": True, "attempts": attempts, "result": result}, ensure_ascii=False))
                 return 0
-        except urllib.error.URLError as exc:
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
             attempts.append({"attempt": index, "error": str(exc)})
         if index < retries and delay_seconds > 0:
             time.sleep(delay_seconds)
