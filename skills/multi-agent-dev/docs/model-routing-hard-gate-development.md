@@ -14,8 +14,8 @@
 - 对合法 marker 强制写入真值表路由，修正遗漏、错误值和与真值表不符的推理强度，并保留原始 `tool_input` 的其他字段。
 - 拒绝缺少必要证明、非法阶段、非法字段、全历史继承或不受支持的 Agent 类型。
 - 对没有 marker 的 spawn 保持完全透传，标准输出为空、退出码为 0。
-- 生成不含完整 message、prompt 或其他敏感内容的 `MAD_ROUTE_RECEIPT`，作为可观察的派发凭证。
-- 通过用户级 `hooks.json` 只注册一个同步 `PreToolUse` hook，matcher 覆盖四个直接派发工具（含 `collaboration.spawn_agent`），并覆盖 `exec` 包装层用于 fail-closed 检测。
+- 生成不含完整 message、prompt 或其他敏感内容的 `MAD_ROUTE_RECEIPT`，作为 Hook 层的派发凭证。
+- 通过用户级 `hooks.json` 只注册一个同步 `PreToolUse` hook，matcher 保留历史直接派发工具名和 `collaboration.spawn_agent` 兼容项，并覆盖 `exec` 包装层用于 fail-closed 检测；matcher 命中本身不证明某个专用派发路径实际进入 Hook。
 
 ### 1.2 非目标
 
@@ -98,11 +98,11 @@ MAD_ROUTE_V1 {"role":"execute","complexity_gate":"ESCALATE_REQUIRED","stage":"CO
 
 ## 5. Hook 输入、输出与错误码
 
-GPT-6/Codex TUI 当前可能将直接派发工具名暴露为 `collaboration.spawn_agent`；它和三个历史工具名共用完全相同的输入、路由、拒绝和 receipt 语义。该兼容项不改变 marker 仍必须位于 `tool_input.message` 第一非空行的约束。
+GPT-6/Codex TUI 当前可能将直接派发工具名暴露为 `collaboration.spawn_agent`；它的输入字段与三个历史工具名相似，但属于平台专用派发路径，当前版本是否进入 `PreToolUse` 必须由运行时探针证明。把它写进 matcher 只是兼容识别，不改变 marker 仍必须位于 `tool_input.message` 第一非空行的约束，也不能预先宣称它具有改写和拒绝能力。
 
 ### 5.1 输入
 
-同步命令从 stdin 读取一个 JSON object。标准字段为 `tool_name`、外层 `tool_use_id` 和 `tool_input`；直接派发工具的 `tool_input` 必须是 object，且 marker 载体为其中的 `message`。直接处理 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 和 `collaboration.spawn_agent`；`exec` 只用于检查包装层：普通 `exec` 完全透传，若输入包含可识别的 `spawn_agent`、`multi_agent_v1__spawn_agent` 或 `collaboration.spawn_agent` 调用则返回 `MAD_ROUTE_WRAPPER_UNSUPPORTED`，要求改用直接派发。其他工具直接 stdout 为空、退出 0。未标记的普通 spawn 仍 stdout 为空、退出 0；只有带 marker 或带 `madv1_` task name 的调用才要求安全 `tool_use_id`。JSON 无法解析、顶层不是 object、缺少可识别 tool name 或直接目标工具缺少 object `tool_input` 时，stdout 必须为空，stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID`，退出码 2 fail-closed。
+同步命令从 stdin 读取一个 JSON object。标准字段为 `tool_name`、外层 `tool_use_id` 和 `tool_input`；直接派发工具的 `tool_input` 必须是 object，且 marker 载体为其中的 `message`。守卫为 `Agent`、`spawn_agent`、`multi_agent_v1__spawn_agent` 提供路由判断；`collaboration.spawn_agent` 仅保留兼容输入识别，不能据此推断运行时一定调用守卫。`exec` 只用于检查包装层：普通 `exec` 完全透传，若输入包含可识别的 `spawn_agent`、`multi_agent_v1__spawn_agent` 或 `collaboration.spawn_agent` 调用则返回 `MAD_ROUTE_WRAPPER_UNSUPPORTED`，要求改用已经通过运行时探针的直接派发。其他工具直接 stdout 为空、退出 0。未标记的普通 spawn 仍 stdout 为空、退出 0；只有带 marker 或带 `madv1_` task name 的调用才要求安全 `tool_use_id`。JSON 无法解析、顶层不是 object、缺少可识别 tool name 或直接目标工具缺少 object `tool_input` 时，stdout 必须为空，stderr 写 `MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID`，退出码 2 fail-closed。
 
 ### 5.2 允许结果
 
@@ -121,7 +121,30 @@ GPT-6/Codex TUI 当前可能将直接派发工具名暴露为 `collaboration.spa
 
 `updatedInput` 是原 `tool_input` 的副本，仅可改变真值表路由和缺失的 `fork_turns=none`；正确 `task_name` 原样保留。receipt 位于 `hookSpecificOutput.additionalContext`，必须包含外层 `tool_use_id`、固定 `policy_rev=v1.3.1-route-guard`、role/gate/stage/task_id/tool_name、`requested_model`、`requested_reasoning_effort`、`enforced_model`、`enforced_reasoning_effort` 和 `corrected`。requested 字段只允许安全分类：model 为 `luna`、`sol`、`omitted`、`other`、`invalid_type`，effort 为 `high`、`max`、`xhigh`、`omitted`、`other`、`invalid_type`；不得回显任意错误值、完整 message、prompt、路径、token 或 payload。
 
-### 5.3 拒绝结果
+`additionalContext` 是 Codex Hook 的上下文通道，不是 `collaboration.spawn_agent` 的函数返回值。直接派发工具的原始结果可能只包含 `task_name`；不能把“原始工具结果没有 `MAD_ROUTE_RECEIPT`”单独当作 Hook 未触发的证据，也不能要求子 Agent 从自己的普通上下文中自报模型或推理强度。
+
+### 5.3 运行时验收探针
+
+运行时验收必须使用能区分“Hook 生效”和“调用者本来就传对参数”的反事实探针，不得只派发一条本来就携带正确 model/effort 的任务：
+
+1. 完全重启 Codex，在新会话中用 `/hooks` 审阅并信任当前定义；旧会话和旧 `trusted_hash` 不计入验收。
+2. 使用直接 Agent 派发入口，marker 声明一个合法组合，例如 `audit + SIMPLE_PROVEN`，但故意传入错误的 `model=gpt-6-sol`、`reasoning_effort=max`。不得通过 `exec`、JS 或其他包装层。
+3. Hook 层应返回 `permissionDecision=allow`、`updatedInput.model=gpt-6-luna`、`updatedInput.reasoning_effort=high` 及绑定 `tool_use_id` 的 `MAD_ROUTE_RECEIPT`。工具函数返回值只显示 task name 属于正常平台行为。
+4. 通过平台可见的子会话 provenance（优先使用子会话的 `turn_context`/运行元数据，而不是子 Agent 自述）核对实际值为 `gpt-6-luna/high`。若平台没有暴露可核对的 provenance，结论只能是 `EVIDENCE_INSUFFICIENT`，不得放行。
+5. 再用非法 marker 或非法 `madv1_` task name 做一次拒绝探针；若仍创建子 Agent，说明 Hook 未生效，必须停止使用该派发路径。
+
+这组探针应保留请求值、可观察到的 Hook `updatedInput`（若平台不回显则记录“不可见”）、子会话实际 provenance 和会话/配置版本；不得把子 Agent 的“我看不到模型”或“已启动”当作实际路由证据。当前环境若直接派发函数只返回 task name，属于平台输出形态；如果错误参数没有被改写，或非法 marker 仍创建子 Agent，则是路由能力失败，不是收据显示问题。
+
+### 5.4 当前 `collaboration.spawn_agent` 的运行时结论
+
+在当前 Codex Desktop/CLI 环境用新进程执行了两类探针：
+
+1. `audit + SIMPLE_PROVEN` 故意传入 `gpt-6-sol/max`，原始 CLI 结果只返回 task name，子会话 `turn_context` 实际仍为 `gpt-6-sol/max`；预期值应为 `gpt-6-luna/high`。
+2. 首行使用非法 `MAD_ROUTE_V1 not-json`，原始 CLI 仍返回 task name 并创建子会话；若 Hook 生效，必须在创建前 deny。
+
+因此当前 `collaboration.spawn_agent` 只能标记为 `ROUTE_UNAVAILABLE`，不能用于本 Skill 的硬路由开发任务。配置文件存在、matcher 包含该名称、工具返回 task name 或子 Agent 自述均不能改变该结论。只有未来新版本通过 §5.3 的两类探针，并能核对实际 provenance，才可恢复为可用入口。
+
+### 5.5 拒绝结果
 
 合法 JSON 输入但 marker 或字段不合法时，返回同一标准 envelope，`permissionDecision` 为 `deny`，`updatedInput` 缺失，reason 为 `MAD_ROUTE_ERROR <稳定错误码>`。合法结构内的路由错误退出码为 0。错误码至少包括：
 
@@ -149,13 +172,13 @@ GPT-6/Codex TUI 当前可能将直接派发工具名暴露为 `collaboration.spa
 4. 在既有 `[features]` 新增 `hooks = true`，不改变其他 feature。
 5. 新建用户级 `hooks.json`，根对象为官方 `{ "hooks": { "PreToolUse": [...] } }`，只注册一个同步 `PreToolUse` command；handler 必须有 `command`，并提供 `commandWindows` 的安全引号绝对路径。matcher 覆盖 `Agent|spawn_agent|multi_agent_v1__spawn_agent|collaboration\.spawn_agent|exec`；Windows 使用当前 Python 3.12，非 Windows command 可用 `python3`。`exec` 仅用于阻断内层派发包装，不能替代直接派发或生成 receipt。
 
-Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信任该 hook。修改 `hooks.json` 后旧 `trusted_hash` 可能失效，必须重新确认当前配置，不能只依据 `enabled=true` 或旧的 trusted 状态判断已启用。未信任或未重启时，硬门禁不生效，工作流必须按 fail-closed 处理，不得把“配置文件存在”当作已启用。
+Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信任该 hook。修改 `hooks.json` 后旧 `trusted_hash` 可能失效，必须重新确认当前配置，不能只依据 `enabled=true` 或旧的 trusted 状态判断已启用。未信任或未重启时，硬门禁不生效，工作流必须按 fail-closed 处理，不得把“配置文件存在”当作已启用。运行时验收按 §5.3 的错误参数探针执行；直接派发函数只返回 task name 不属于失败证据。
 
 ## 7. 失败回流
 
-- 缺 marker/receipt、实际路由不符、推理强度与真值表不符或 hook 未启用：结果不得放行，记录为门禁失败并重新派发。
+- 缺 marker、Hook 层 receipt、可核对的实际 provenance、实际路由不符、推理强度与真值表不符或 hook 未启用：结果不得放行，记录为门禁失败并重新派发。原始派发函数结果没有嵌入 receipt 不单独构成失败。
 - 通过 `exec`/JS 包装层发起的嵌套派发：在 Agent 创建前拒绝，不能把外层 `exec` 的通过当作内层 receipt；改用直接 `spawn_agent` 后重新走同一 Hook。
-- 当前环境若只有包装派发入口而没有可直接匹配的 Agent 工具，记录 `ROUTE_UNAVAILABLE` 并暂停派发；不能用旧模型的显式参数或“已启动”状态替代门禁证据。
+- 当前环境若只有包装派发入口、只有未通过探针的 `collaboration.spawn_agent`，或无法核对子会话 provenance，记录 `ROUTE_UNAVAILABLE` 并暂停派发；不能用旧模型的显式参数或“已启动”状态替代门禁证据。
 - 标记 JSON/字段/阶段/继承非法：保持同步 deny，不创建 Agent；修正原始派发输入后重新走同一 hook。
 - 若错误 Agent 已启动：立即停止或取消其后续写入，确认状态为 `inactive`、`completed` 或 `failed` 且无进行中写入，记录 `WRITER_STATUS` 与停止证据；再按正确 marker、模型、推理强度和非继承 fork 重新派发。不能以口头声明或额度耗尽代替停止证据。
 - 若只缺测试证据而代码未变，补证后由独立审计复核同一版本；若需要改变契约、权限、外部副作用或文件范围，回到契约回流并重新冻结。
@@ -170,13 +193,15 @@ Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信�
 | 合法路由 | think escalate；execute simple/escalate；audit simple/escalate | allow、receipt、真值表 model/effort |
 | 修正 | model/effort 遗漏、错误或与真值表不符 | updatedInput 只改必要字段；receipt 分类 requested/enforced/corrected |
 | 幂等 | 已正确设置的合法输入重复运行 | 输出路由与 receipt 稳定，输入语义不漂移 |
-| 工具名 | Agent、spawn_agent、multi_agent_v1__spawn_agent、collaboration.spawn_agent | 四者同一门禁语义 |
+| 工具名 | Agent、spawn_agent、multi_agent_v1__spawn_agent | 经过运行时探针后才可作为硬门禁入口 |
+| 专用派发路径 | collaboration.spawn_agent | 仅作兼容识别；当前探针失败即 `ROUTE_UNAVAILABLE`，不得把 matcher 或 task name 当作门禁证据 |
 | 包装层 | exec 输入包含可识别嵌套 spawn | deny、`MAD_ROUTE_WRAPPER_UNSUPPORTED`、不回显输入 |
 | marker | JSON 失败、未知字段、缺字段、错误类型、超长字符串、旧 contract_rev | deny、稳定错误码、不回显 message |
 | 语义 | role/gate/stage 不匹配，think simple | deny |
 | schema | task_name 前缀/role/gate/slug mismatch、madv1 task 缺 marker；fork_turns all/正整数/字符串正整数/非法；fork_context true/非法；fork_turns+fork_context 混合；内置 agent_type/自定义值 | 按契约 allow 修正或 deny |
 | 安全 | 非法/缺失 tool_use_id、task_id 路径/控制字符/超长；非法 stdin、非 object、缺 tool_input、内部异常、receipt 脱敏 | fail-closed；stdout 空、stderr 稳定错误；receipt 不含完整 message/prompt/错误模型 |
 | 集成 | hook JSON、TOML、仓库外 quick_validate、app-server `hooks/list`、diff whitespace | 解析通过、命令退出 0；hooks/list 只证明发现 |
+| 运行时 | 新会话错误参数探针、非法 marker 拒绝探针、子会话 provenance | 错误参数被改为真值表，非法 marker 不创建子 Agent，实际 metadata 与 enforced route 一致；函数返回值只含 task name 不单独判失败 |
 
 ## 9. 验收与已知限制
 
@@ -186,14 +211,14 @@ Hook 需要重启 Codex 才能加载；用户必须通过 `/hooks` 审阅并信�
 2. 所有合法路由、拒绝路径、透传路径和 schema 兼容测试通过。
 3. `python -B` 标准库单测、JSON/TOML 解析和 `git diff --check` 均退出 0；quick_validate 必须用可复现的仓库外绝对脚本解析调用，例如 PowerShell：`$q=(Resolve-Path (Join-Path $env:USERPROFILE '.codex\skills\.system\skill-creator\scripts\quick_validate.py')).Path; $s=(Resolve-Path '.').Path; python -B $q $s`；无新增 `__pycache__`。
 4. `hooks.json` 使用官方根结构且只有一个同步 PreToolUse 注册，handler 同时有 command/commandWindows，matcher 无法覆盖非目标工具；配置其他值不变且无全局 `[agents]` 默认块。
-5. Receipt 位于 `additionalContext`，绑定安全 tool_use_id，包含固定 policy_rev、requested/enforced 分类与 corrected；缺 receipt 不得 ACCEPTED，且 receipt/error reason 不含完整 message、prompt、路径、凭据或签名数据。
-6. `app-server hooks/list` 只能证明用户 hook 被发现；`trustStatus=untrusted` 表示尚未激活，不能计入代码验收。fresh-session receipt 只有在用户重启并通过 `/hooks` 信任后才能验证；当前未信任状态不得伪造为已激活。
+5. Receipt 位于 Hook 输出的 `additionalContext`，绑定安全 tool_use_id，包含固定 policy_rev、requested/enforced 分类与 corrected；不能要求它出现在直接派发函数返回值中。缺 Hook 层 receipt 或缺可核对 provenance 不得 ACCEPTED，且 receipt/error reason 不含完整 message、prompt、路径、凭据或签名数据。
+6. `app-server hooks/list` 只能证明用户 hook 被发现；`trustStatus=untrusted` 表示尚未激活，不能计入代码验收。fresh-session 错误参数探针只有在用户重启并通过 `/hooks` 信任后才能验证；当前未信任状态不得伪造为已激活。子 Agent 自述看不到模型/推理强度不构成反证，必须查平台 provenance；平台不暴露 provenance，或错误参数/非法 marker 探针失败时，保持 `EVIDENCE_INSUFFICIENT`/`ROUTE_UNAVAILABLE`。
 7. 交付报告提供开发文档哈希、变更清单、命令/退出码、未验证项和审计所需的固定版本证据；不提交、不暂存、不推送。
 
 已知限制：
 
-- Hook 能强制修改传给工具的输入，但不能证明运行时、远端 worker 或已经启动的 Agent 实际执行了目标模型。
+- Hook 能强制修改传给工具的输入，但不能单凭 Hook receipt 证明运行时、远端 worker 或已经启动的 Agent 实际执行了目标模型；必须用 §5.3 的子会话 provenance 复核。
 - 用户未重启或未在 `/hooks` 信任该 hook 时，运行时可能不执行门禁；此时只能按未启用处理。
 - `hooks/list` 返回 `trustStatus=untrusted` 时只代表发现配置，不代表 hook 已激活；fresh-session receipt 仍需重启并完成信任后验证。
 - 平台未来若改动 hook 输入/输出 schema，必须先更新本契约和测试；守卫不会猜测未知 schema 或自动扩展 Agent 类型。
-- receipt 是派发时的脱敏凭证，不是完整审计日志，也不保存 prompt/message。
+- receipt 是派发时的脱敏 Hook 凭证，不是完整审计日志，也不保存 prompt/message；Codex 可能不把它回显到直接派发函数结果。

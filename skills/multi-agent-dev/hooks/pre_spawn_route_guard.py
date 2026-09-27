@@ -21,7 +21,8 @@ RECEIPT_PREFIX = "MAD_ROUTE_RECEIPT"
 ERROR_PREFIX = "MAD_ROUTE_ERROR"
 POLICY_REV = "v1.3.1-route-guard"
 HOOK_EVENT_NAME = "PreToolUse"
-TARGET_TOOLS = frozenset({"Agent", "spawn_agent", "multi_agent_v1__spawn_agent", "collaboration.spawn_agent"})
+TARGET_TOOLS = frozenset({"Agent", "spawn_agent", "multi_agent_v1__spawn_agent"})
+COMPATIBILITY_ONLY_TOOLS = frozenset({"collaboration.spawn_agent"})
 WRAPPER_TOOLS = frozenset({"exec"})
 BUILTIN_AGENT_TYPES = frozenset({"worker", "explorer", "default"})
 ALLOWED_ROLES = frozenset({"think", "execute", "audit"})
@@ -308,6 +309,28 @@ def _guard_exec_wrapper(tool_input: Any) -> tuple[str, dict[str, Any] | None, in
     return "passthrough", None, 0
 
 
+def _guard_compatibility_only_spawn(tool_input: Any) -> tuple[str, dict[str, Any] | None, int]:
+    """Fail closed for a platform spawn path without proven hook coverage.
+
+    ``collaboration.spawn_agent`` is recognized so a future runtime that does
+    send it through PreToolUse cannot silently turn a marked MAD task into an
+    unverified route.  Ordinary unmarked calls remain transparent to other
+    skills.  Current runtimes may bypass this hook entirely; the skill-level
+    runtime probe still has to classify that path as ROUTE_UNAVAILABLE.
+    """
+
+    if not isinstance(tool_input, dict):
+        return "deny", _deny_result("MAD_ROUTE_INPUT_INVALID"), 2
+    task_name = tool_input.get("task_name")
+    try:
+        marker = parse_marker(tool_input.get("message"))
+    except RouteError:
+        marker = True
+    if marker is not None or (isinstance(task_name, str) and task_name.startswith("madv1_")):
+        return "deny", _deny_result("MAD_ROUTE_UNAVAILABLE"), 0
+    return "passthrough", None, 0
+
+
 def guard_payload(payload: Any) -> tuple[str, dict[str, Any] | None, int]:
     """Guard one decoded hook payload.
 
@@ -323,6 +346,8 @@ def guard_payload(payload: Any) -> tuple[str, dict[str, Any] | None, int]:
         return "deny", _deny_result("MAD_ROUTE_INPUT_INVALID"), 2
     if tool_name in WRAPPER_TOOLS:
         return _guard_exec_wrapper(payload.get("tool_input"))
+    if tool_name in COMPATIBILITY_ONLY_TOOLS:
+        return _guard_compatibility_only_spawn(payload.get("tool_input"))
     if tool_name not in TARGET_TOOLS:
         return "passthrough", None, 0
     tool_input = payload.get("tool_input")

@@ -138,13 +138,34 @@ class RouteGuardPureTests(unittest.TestCase):
             "Agent",
             "spawn_agent",
             "multi_agent_v1__spawn_agent",
-            "collaboration.spawn_agent",
         ):
             with self.subTest(tool_name=tool_name):
                 action, output, exit_code = guard.guard_payload(payload(tool_name=tool_name))
                 self.assertEqual((action, exit_code), ("allow", 0))
                 assert output is not None
                 self.assertEqual(output["hookSpecificOutput"]["updatedInput"]["reasoning_effort"], "max")
+
+    def test_collaboration_spawn_is_compatibility_only_and_fails_closed(self) -> None:
+        action, output, exit_code = guard.guard_payload(
+            payload(
+                tool_name="collaboration.spawn_agent",
+                tool_input={
+                    "message": marker("audit", "SIMPLE_PROVEN", "VERSION_FROZEN"),
+                    "task_name": "madv1_audit_simple_compatibility_only",
+                },
+            )
+        )
+        self.assertEqual((action, exit_code), ("deny", 0))
+        assert output is not None
+        self.assertIn("MAD_ROUTE_UNAVAILABLE", json.dumps(output))
+
+        action, output, exit_code = guard.guard_payload(
+            payload(
+                tool_name="collaboration.spawn_agent",
+                tool_input={"message": "ordinary task", "task_name": "ordinary_task"},
+            )
+        )
+        self.assertEqual((action, output, exit_code), ("passthrough", None, 0))
 
     def test_prompt_only_marker_does_not_bypass_message_contract(self) -> None:
         """A prompt-only payload must not silently claim a route receipt."""
@@ -160,7 +181,7 @@ class RouteGuardPureTests(unittest.TestCase):
         )
         self.assertEqual((action, exit_code), ("deny", 0))
         assert output is not None
-        self.assertIn("MAD_ROUTE_MARKER_INVALID", json.dumps(output))
+        self.assertIn("MAD_ROUTE_UNAVAILABLE", json.dumps(output))
 
     def test_malformed_direct_input_is_distinguished_from_missing_marker(self) -> None:
         """Malformed envelopes are INPUT_INVALID; missing markers are not."""
@@ -397,7 +418,7 @@ class RouteGuardCliTests(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertEqual(result.stderr, "MAD_ROUTE_ERROR MAD_ROUTE_INPUT_INVALID\n")
 
-    def test_collaboration_namespace_cli_returns_receipt(self) -> None:
+    def test_collaboration_namespace_cli_fails_closed_until_runtime_probe(self) -> None:
         result = self.run_cli(
             json.dumps(
                 payload(
@@ -416,10 +437,8 @@ class RouteGuardCliTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
         decoded = json.loads(result.stdout)
         specific = decoded["hookSpecificOutput"]
-        self.assertEqual(specific["permissionDecision"], "allow")
-        self.assertEqual(specific["updatedInput"]["model"], "gpt-6-luna")
-        self.assertEqual(specific["updatedInput"]["reasoning_effort"], "high")
-        self.assertIn("MAD_ROUTE_RECEIPT", specific["additionalContext"])
+        self.assertEqual(specific["permissionDecision"], "deny")
+        self.assertIn("MAD_ROUTE_UNAVAILABLE", specific["permissionDecisionReason"])
 
     def test_valid_cli_output_is_json_and_updates_input(self) -> None:
         result = self.run_cli(json.dumps(payload(tool_input={"message": marker(), "reasoning_effort": "xhigh"})))

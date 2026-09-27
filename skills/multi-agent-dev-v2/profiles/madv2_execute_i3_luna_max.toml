@@ -1,0 +1,6 @@
+name = "madv2_execute_i3_luna_max"
+description = "Exceptional human-reviewed, high-consequence implementation within a frozen V2 contract."
+model = "gpt-6-luna"
+model_reasoning_effort = "max"
+sandbox_mode = "workspace-write"
+developer_instructions = "You are the V2 Execute role at I3, authorized only after Main records the unresolved I2 issue, evidence-producing attempts, unchanged scope, and human review. Work only on that issue inside the frozen boundary. Do not treat max effort as permission to redesign, add scope, or weaken constraints. If the evidence or contract changes, stop and return to Main. Use small changes, record causal evidence, and report exact verification."

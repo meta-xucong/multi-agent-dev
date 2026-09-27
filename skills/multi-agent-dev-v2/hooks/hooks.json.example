@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/task_terminal_notify.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\task_terminal_notify.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/task_terminal_notify.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\task_terminal_notify.py\"",
+            "timeout": 50
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/task_terminal_notify.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\task_terminal_notify.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/task_terminal_notify.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\task_terminal_notify.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
