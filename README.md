@@ -109,8 +109,8 @@
 ### Codex 平台
 
 ```bash
-# 推荐：只安装 V2
-python scripts/install-skill-from-github.py --repo meta-xucong/multi-agent-dev --path skills/multi-agent-dev-v2
+# 推荐：只安装 V2（使用 Codex 自带的 skill-installer）
+python "%USERPROFILE%\\.codex\\skills\\.system\\skill-installer\\scripts\\install-skill-from-github.py" --repo meta-xucong/multi-agent-dev --path skills/multi-agent-dev-v2
 
 # 如需兼容旧任务，再单独安装 V1
 codex skills add skills/multi-agent-dev
