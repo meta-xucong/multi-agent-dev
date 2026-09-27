@@ -6,7 +6,7 @@
 
 | 平台 | 适用版本 | 说明 |
 |---|---|---|
-| **Codex** | `skills/multi-agent-dev/`<br>`skills/context-lean/` | 原始版本，使用 GPT-6 (Sol/Luna)，含完整 Hook 系统 |
+| **Codex** | `skills/multi-agent-dev-v2/`<br>`skills/multi-agent-dev/`<br>`skills/context-lean/` | V2 为当前推荐版本；V1 保留用于兼容旧任务；三者都是独立 Skill |
 | **Claude Code** | `skills/multi-agent-audit-claude-code/` | 新增版本，使用 Claude 5 (Opus/Sonnet/Haiku)，基于 context-lean 原则 |
 
 ## 技能目录
@@ -15,7 +15,8 @@
 
 | Skill | 用途 | 模型要求 | 入口 |
 | --- | --- | --- | --- |
-| `multi-agent-dev` | 按开发文档组织主控、按需思考、最小执行与独立审计，以证据控制范围和验收；长任务按需伴随 `context-lean` | GPT-6 (Sol/Luna) | [`skills/multi-agent-dev/SKILL.md`](skills/multi-agent-dev/SKILL.md) |
+| `multi-agent-dev-v2`（推荐） | 按 D/I/A 风险轴组织主控、思考、执行与独立审计；具有范围纠偏、证据门禁、并发控制和运行时子线程生命周期门禁 | GPT-6 Sol/Luna | [`skills/multi-agent-dev-v2/SKILL.md`](skills/multi-agent-dev-v2/SKILL.md) |
+| `multi-agent-dev`（V1/兼容） | 按开发文档组织主控、按需思考、最小执行与独立审计，以证据控制范围和验收；长任务按需伴随 `context-lean` | GPT-6 Sol/Luna | [`skills/multi-agent-dev/SKILL.md`](skills/multi-agent-dev/SKILL.md) |
 | `context-lean` | 优化 Codex 长任务的上下文膨胀、主动压缩、压缩前状态保存和压缩后恢复 | GPT-6 | [`skills/context-lean/SKILL.md`](skills/context-lean/SKILL.md) |
 
 ### Claude Code 平台
@@ -64,7 +65,14 @@
 
 ## 关键特性
 
-### Codex 平台 — `multi-agent-dev`
+### Codex 平台 — `multi-agent-dev-v2`（推荐）
+- **四职责协作模型**: 主控、按需思考、执行、独立审计
+- **D/I/A 风险路由**: 按设计、实现、审计风险选择角色和思考强度
+- **范围与证据门禁**: 防止越界开发、方向漂移和无证据放行
+- **运行时派发门禁**: 校验子线程启动、实际设置、终态和父线程生命周期
+- **ServerChan 微信通知**: 任务终态自动推送
+
+### Codex 平台 — `multi-agent-dev`（V1/兼容）
 - **四职责协作模型**: 主控、按需思考、执行、独立审计
 - **模型路由真值表**: 按任务复杂度自动路由到 Sol/Luna High/Max
 - **停滞检测与恢复**: 处理 `ORCH_STALE_SUSPECTED`、`ORCH_STATE_CONFLICT` 等异常状态
@@ -101,8 +109,13 @@
 ### Codex 平台
 
 ```bash
-# 安装 multi-agent-dev
+# 推荐：只安装 V2
+python scripts/install-skill-from-github.py --repo meta-xucong/multi-agent-dev --path skills/multi-agent-dev-v2
+
+# 如需兼容旧任务，再单独安装 V1
 codex skills add skills/multi-agent-dev
+
+# V2 与 V1 是两个独立 Skill；同一个任务不要同时加载
 
 # 安装 context-lean
 codex skills add skills/context-lean
