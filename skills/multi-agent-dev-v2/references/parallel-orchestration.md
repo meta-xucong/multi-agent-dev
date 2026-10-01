@@ -12,6 +12,8 @@ The main session owns user intent, scope freeze, authorization, integration and 
 6. An independent auditor binds an AuditReceipt to manifest, result revision and diff hash.
 7. Only accepted tasks can make the Run READY_TO_MERGE.
 
+For source-sensitive tasks, Main dispatches a read-only-requested Source Fidelity sidecar after the writer freezes its output revision and before formal handoff. It is not represented as a Controller DAG dependency, which would create a handoff/scheduling cycle. Handoff requires both a same-version SourceFidelityReceipt with `PASS` and a persisted source-role runtime-dispatch record bound to the same terminal child thread. The current event adapter does not observe actual sandbox mode or cryptographically authenticate raw events; these limits must remain explicit.
+
 PLANNED, RETRYABLE, LEASED, RUNNING, CHECKPOINTED, WAITING_HANDOFF, AUDIT_PENDING and ACCEPTED are task states. HANDOFF_READY is evidence, not a persisted state.
 
 Use scripts/orchestrate.py with one JSON request per invocation. Keep the state database private to the run. External side effects are written to the outbox first, then claimed and completed by a separate notifier.

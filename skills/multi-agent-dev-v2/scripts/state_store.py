@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """SQLite-backed controller state with transactional CAS, idempotency and fencing."""
 from __future__ import annotations
-import hashlib, json, sqlite3, time, uuid
+import hashlib, json, re, sqlite3, time, uuid
 from pathlib import Path
 from typing import Any
-from parallel_manifest import canonical_json, ContractError, ScopeManifest, TASK_STATES, parse_manifest, validate_id
+from parallel_manifest import canonical_hash, canonical_json, ContractError, ScopeManifest, TASK_STATES, parse_manifest, validate_id
 from audit_receipt import AuditReceipt
+from source_fidelity import SourceFidelityReceipt
+from route_contract import PROFILE_ROUTE_CONTRACT, SOURCE_FIDELITY_PROFILE
+from runtime_dispatch import RuntimeDispatchRequest
 
 class StateError(RuntimeError): pass
 class StaleRevision(StateError): pass
@@ -41,6 +44,8 @@ TASK_TRANSITIONS={
 def _now() -> int: return int(time.time())
 def _dump(value: Any) -> str: return canonical_json(value).decode("utf-8")
 def _hash(value: Any) -> str: return hashlib.sha256(_dump(value).encode()).hexdigest()
+
+SECRET_PATTERNS=(re.compile(r"\bapi[_-]?key\b", re.I), re.compile(r"\bsendkey\b", re.I), re.compile(r"\bpassword\b", re.I), re.compile(r"\bbearer\s+", re.I), re.compile(r"(?:^|[^A-Za-z0-9])sk-[A-Za-z0-9]{16,}(?:$|[^A-Za-z0-9])", re.I))
 
 class StateStore:
     def __init__(self, path: str|Path):
@@ -346,9 +351,12 @@ class StateStore:
     def record_evidence(self, evidence: dict[str,Any]):
         required={"evidence_id","run_id","kind","source","manifest_hash","observed_at","limitations","redaction_status"}
         if not required.issubset(evidence): raise ContractError("incomplete evidence")
+        if evidence.get("kind") not in {"TEST_RECEIPT","DIFF_RECEIPT","HASH_RECEIPT","GUARD_RECEIPT","AUDIT_RECEIPT","SOURCE_FIDELITY_RECEIPT","ROUTE_PROVENANCE","HOOK_PROBE","PROFILE_PROBE","USER_DECISION"}: raise ContractError("invalid evidence kind")
         exit_code=evidence.get("exit_code")
         if exit_code is not None and type(exit_code) is not int: raise ContractError("exit_code must be an integer")
         if evidence.get("kind")=="TEST_RECEIPT" and type(exit_code) is not int: raise ContractError("TEST_RECEIPT exit_code must be an integer")
+        serialized=_dump(evidence).lower()
+        if any(pattern.search(serialized) for pattern in SECRET_PATTERNS): raise ContractError("evidence contains secret-like text")
         self._begin()
         try:
             run=self.db.execute("SELECT manifest_hash FROM runs WHERE run_id=?",(evidence["run_id"],)).fetchone()
@@ -361,6 +369,59 @@ class StateStore:
             self.db.execute("INSERT INTO evidence(evidence_id,run_id,task_id,kind,source,manifest_hash,base_revision,result_revision,artifact_hash,command_or_ui_step,exit_code,observed_at,limitations,redaction_status,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(evidence["evidence_id"],evidence["run_id"],evidence.get("task_id"),evidence["kind"],evidence["source"],evidence["manifest_hash"],evidence.get("base_revision"),evidence.get("result_revision"),evidence.get("artifact_hash"),evidence.get("command_or_ui_step"),evidence.get("exit_code"),evidence["observed_at"],evidence["limitations"],evidence["redaction_status"],_dump(evidence)))
             self._finish(True); return {"evidence_id":evidence["evidence_id"],"run_id":evidence["run_id"]}
         except Exception: self._finish(False); raise
+
+    @staticmethod
+    def _unwrap_source_receipt_payload(payload: dict[str,Any]) -> dict[str,Any]:
+        if isinstance(payload, dict) and payload.get("kind")=="SOURCE_FIDELITY_RECEIPT" and isinstance(payload.get("payload"), dict):
+            return payload["payload"]
+        return payload
+
+    @staticmethod
+    def _validate_source_receipt_payload(payload: dict[str,Any], run_id: str, task_id: str, manifest_hash: str, target_manifest_hash: str, result_revision: str, diff_hash: str, expected_commit: str, expected_source_manifest: str, expected_mapping_revision: str, expected_target_manifest: str, expected_target_baseline_manifest: str, expected_mapping_manifest: str, expected_producer_thread_id: str) -> None:
+        payload=StateStore._unwrap_source_receipt_payload(payload)
+        try:
+            receipt=SourceFidelityReceipt(**payload)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ContractError("invalid source fidelity receipt schema") from exc
+        if receipt.status!="PASS" or receipt.producer_thread_id!=expected_producer_thread_id or receipt.run_id!=run_id or receipt.task_id!=task_id or receipt.scope_manifest_hash!=manifest_hash or receipt.target_manifest_hash!=target_manifest_hash or receipt.target_manifest_hash!=expected_target_manifest or receipt.target_base_manifest_sha256!=expected_target_baseline_manifest or receipt.mapping_manifest_sha256!=expected_mapping_manifest or str(receipt.target_result_revision)!=str(result_revision) or receipt.target_diff_hash!=diff_hash or receipt.reference.get("commit")!=expected_commit or receipt.reference.get("manifest_sha256")!=expected_source_manifest or receipt.mapping_revision!=expected_mapping_revision:
+            raise ContractError("source fidelity receipt target binding mismatch")
+
+    @staticmethod
+    def _validate_source_dispatch_payload(row: Any, run_id: str, task_id: str, manifest_hash: str, result_revision: str) -> str:
+        if row["kind"]!="ROUTE_PROVENANCE" or row["source"]!="codex-runtime" or row["run_id"]!=run_id or row["task_id"]!=task_id or row["manifest_hash"]!=manifest_hash or str(row["result_revision"])!=str(result_revision):
+            raise ContractError("source fidelity runtime dispatch evidence binding mismatch")
+        try:
+            evidence=json.loads(row["payload_json"])
+            payload=evidence.get("payload") or {}
+            result=payload.get("runtime_dispatch") or {}
+            if re.fullmatch(r"[0-9a-f]{64}",str(payload.get("runtime_events_sha256",""))) is None or row["artifact_hash"]!=canonical_hash(result):
+                raise ContractError("source dispatch event/hash evidence is incomplete")
+            request_data=result.get("request") or {}
+            request=RuntimeDispatchRequest(
+                parent_thread_id=request_data["parent_thread_id"], task_id=request_data["task_id"],
+                requested_model=request_data["requested_model"], requested_effort=request_data["requested_effort"],
+                profile_id=request_data["profile_id"], hook_status=request_data["hook_status"],
+                sandbox_mode=request_data["requested_sandbox_mode"], role=request_data["role"],
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ContractError("invalid source fidelity runtime dispatch evidence") from exc
+        if request.role!="source_fidelity" or request.task_id!=task_id or request.profile_id not in set(SOURCE_FIDELITY_PROFILE.values()):
+            raise ContractError("runtime dispatch is not the required Source Fidelity role")
+        if request.sandbox_mode!="read-only":
+            raise ContractError("Source Fidelity sandbox was not requested read-only")
+        expected=PROFILE_ROUTE_CONTRACT[request.profile_id]
+        route=result.get("route_provenance") or {}
+        child_id=result.get("child_thread_id")
+        refs=set(result.get("evidence_refs") or ())
+        if (result.get("admissible") is not True or result.get("lifecycle")!="CHILD_COMPLETED" or result.get("child_started_observed") is not True or result.get("child_completed") is not True or result.get("parent_close_allowed") is not True or result.get("blockers") or not child_id or f"child-thread:{child_id}" not in refs or not any(str(ref).endswith(":settings") for ref in refs) or not any(str(ref).endswith(":child-terminal") for ref in refs)):
+            raise ContractError("Source Fidelity child lifecycle is not admissible")
+        if result.get("sandbox_observed") is not False:
+            raise ContractError("runtime evidence must not claim sandbox observation")
+        if route.get("route_status") not in {"PROFILE_VERIFIED","EXPLICIT_ROUTE_VERIFIED"} or route.get("observed_model")!=expected[0] or route.get("observed_effort")!=expected[1] or route.get("source")!="codex-app-server.thread.settings":
+            raise ContractError("Source Fidelity child runtime route does not match its role profile")
+        if request.requested_model!=expected[0] or request.requested_effort!=expected[1]:
+            raise ContractError("Source Fidelity requested route does not match its role profile")
+        return child_id
 
     def validate_audit_receipt_binding(self, receipt: dict[str,Any]) -> None:
         """Validate PASS receipt provenance against the frozen task and persisted evidence."""
@@ -377,7 +438,15 @@ class StateStore:
         provenance=receipt.get("provenance") or {}
         if provenance.get("observed_model")!=spec.get("requested_model") or provenance.get("observed_effort")!=spec.get("requested_effort"):
             raise ContractError("observed route does not match requested model or effort")
-        refs=set(packet.get("evidence_refs") or ()) | set(provenance.get("evidence_refs") or ())
+        packet_source_refs=set(packet.get("source_fidelity_evidence_refs") or ())
+        provenance_source_refs=set(provenance.get("source_fidelity_evidence_refs") or ())
+        packet_dispatch_refs=set(packet.get("source_fidelity_dispatch_evidence_refs") or ())
+        provenance_dispatch_refs=set(provenance.get("source_fidelity_dispatch_evidence_refs") or ())
+        source_refs=packet_source_refs | provenance_source_refs
+        if spec.get("source_fidelity_required"):
+            if provenance.get("source_fidelity_status")!="PASS" or packet.get("source_fidelity_status")!="PASS" or not source_refs or packet_source_refs!=provenance_source_refs or not packet_dispatch_refs or packet_dispatch_refs!=provenance_dispatch_refs:
+                raise ContractError("source fidelity PASS evidence is required")
+        refs=set(packet.get("evidence_refs") or ()) | set(provenance.get("evidence_refs") or ()) | source_refs | packet_dispatch_refs | provenance_dispatch_refs
         if not refs: raise ContractError("PASS requires bound evidence references")
         placeholders=",".join("?" for _ in refs)
         rows=self.db.execute(f"SELECT * FROM evidence WHERE evidence_id IN ({placeholders})",tuple(refs)).fetchall()
@@ -386,6 +455,18 @@ class StateStore:
         for row in rows:
             if row["run_id"]!=task["run_id"] or row["task_id"] not in {None,task["task_id"]} or row["manifest_hash"]!=run["manifest_hash"]:
                 raise ContractError("audit evidence binding mismatch")
+        if spec.get("source_fidelity_required"):
+            if len(packet_dispatch_refs)!=1: raise ContractError("exactly one Source Fidelity runtime dispatch receipt is required")
+            dispatch_rows=[row for row in rows if row["evidence_id"] in packet_dispatch_refs]
+            if len(dispatch_rows)!=1: raise ContractError("Source Fidelity runtime dispatch evidence is missing")
+            producer_thread_id=self._validate_source_dispatch_payload(dispatch_rows[0],task["run_id"],task["task_id"],run["manifest_hash"],packet.get("result_revision"))
+            source_rows=[row for row in rows if row["evidence_id"] in source_refs and row["kind"]=="SOURCE_FIDELITY_RECEIPT" and row["source"]=="source-fidelity-agent"]
+            if set(row["evidence_id"] for row in source_rows)!=source_refs:
+                raise ContractError("source fidelity evidence reference is missing or wrong kind")
+            for row in source_rows:
+                try: source_payload=json.loads(row["payload_json"]).get("payload") or {}
+                except (TypeError,ValueError): source_payload={}
+                self._validate_source_receipt_payload(source_payload, task["run_id"], task["task_id"], run["manifest_hash"], packet.get("source_fidelity_target_manifest_hash"), packet.get("result_revision"), packet.get("diff_hash"), spec.get("source_reference_commit"), spec.get("source_reference_manifest_sha256"), spec.get("source_mapping_revision"), spec.get("source_target_manifest_sha256"), spec.get("source_target_baseline_manifest_sha256"), spec.get("source_mapping_manifest_sha256"), producer_thread_id)
         route_refs=set(provenance.get("evidence_refs") or ())
         route_ok=False
         for row in rows:
@@ -404,6 +485,47 @@ class StateStore:
                 raise ContractError("handoff test receipt is not successful")
             if not any(test["command"]==row["command_or_ui_step"] for row in test_rows):
                 raise ContractError("handoff test command lacks persisted evidence")
+
+    def validate_source_fidelity_packet(self, task_id: str, packet: dict[str,Any]) -> None:
+        """Fail closed before a source-sensitive handoff enters AUDIT_PENDING."""
+        task=self.db.execute("SELECT * FROM tasks WHERE task_id=?",(task_id,)).fetchone()
+        if not task: raise StateError("unknown source fidelity task")
+        spec=json.loads(task["spec_json"])
+        if not spec.get("source_fidelity_required"): return
+        run=self.db.execute("SELECT * FROM runs WHERE run_id=?",(task["run_id"],)).fetchone()
+        if not run: raise StateError("unknown source fidelity run")
+        refs=set(packet.get("source_fidelity_evidence_refs") or ())
+        if packet.get("source_fidelity_status")!="PASS" or not refs: raise ContractError("source fidelity PASS evidence is required")
+        dispatch_refs=set(packet.get("source_fidelity_dispatch_evidence_refs") or ())
+        evidence_refs=set(packet.get("evidence_refs") or ())
+        if len(dispatch_refs)!=1 or not refs.issubset(evidence_refs) or not dispatch_refs.issubset(evidence_refs): raise ContractError("source fidelity receipt and runtime dispatch must be included in handoff evidence")
+        all_refs=refs|dispatch_refs
+        placeholders=",".join("?" for _ in all_refs)
+        rows=self.db.execute(f"SELECT * FROM evidence WHERE evidence_id IN ({placeholders})",tuple(all_refs)).fetchall()
+        if {row["evidence_id"] for row in rows}!=all_refs: raise ContractError("source fidelity evidence reference is missing")
+        dispatch_rows=[row for row in rows if row["evidence_id"] in dispatch_refs]
+        if len(dispatch_rows)!=1: raise ContractError("source fidelity runtime dispatch evidence is missing")
+        producer_thread_id=self._validate_source_dispatch_payload(dispatch_rows[0],task["run_id"],task_id,run["manifest_hash"],packet.get("result_revision"))
+        source_rows=[row for row in rows if row["evidence_id"] in refs]
+        for row in source_rows:
+            if row["kind"]!="SOURCE_FIDELITY_RECEIPT" or row["source"]!="source-fidelity-agent" or row["run_id"]!=task["run_id"] or row["task_id"]!=task_id or row["manifest_hash"]!=run["manifest_hash"]:
+                raise ContractError("source fidelity evidence binding mismatch")
+            try: payload=json.loads(row["payload_json"]).get("payload") or {}
+            except (TypeError,ValueError): payload={}
+            payload=self._unwrap_source_receipt_payload(payload)
+            self._validate_source_receipt_payload(payload, task["run_id"], task_id, run["manifest_hash"], packet.get("source_fidelity_target_manifest_hash"), packet.get("result_revision"), packet.get("diff_hash"), spec.get("source_reference_commit"), spec.get("source_reference_manifest_sha256"), spec.get("source_mapping_revision"), spec.get("source_target_manifest_sha256"), spec.get("source_target_baseline_manifest_sha256"), spec.get("source_mapping_manifest_sha256"), producer_thread_id)
+            required_tests=set(payload.get("tests") or ())
+            test_refs=set(payload.get("evidence_refs") or ())
+            if not required_tests or not test_refs: raise ContractError("source fidelity tests and evidence refs are required")
+            test_placeholders=",".join("?" for _ in test_refs)
+            test_rows=self.db.execute(f"SELECT * FROM evidence WHERE evidence_id IN ({test_placeholders})",tuple(test_refs)).fetchall()
+            if {test_row["evidence_id"] for test_row in test_rows}!=test_refs: raise ContractError("source fidelity test evidence is missing")
+            proven_tests=set()
+            for test_row in test_rows:
+                if test_row["kind"]!="TEST_RECEIPT" or test_row["run_id"]!=task["run_id"] or test_row["task_id"]!=task_id or test_row["manifest_hash"]!=run["manifest_hash"] or type(test_row["exit_code"]) is not int or test_row["exit_code"]!=0:
+                    raise ContractError("source fidelity test evidence binding mismatch")
+                proven_tests.add(test_row["command_or_ui_step"])
+            if required_tests-proven_tests: raise ContractError("source fidelity regression tests lack successful receipts")
 
     def store_audit_receipt(self, receipt: dict[str,Any], request_key: str|None=None):
         required={"audit_id","auditor_actor","target_manifest_hash","target_task_id","target_result_revision","target_diff_hash","decision","writer_actor"}

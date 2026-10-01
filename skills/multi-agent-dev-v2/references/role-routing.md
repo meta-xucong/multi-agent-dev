@@ -8,6 +8,7 @@
 | Think | Resolve a material design/source/contract/acceptance ambiguity; return the minimum decision and risks | Read-only; no code, tests, or scope expansion |
 | Execute | Implement the frozen contract and targeted tests in its owned boundary | One writer at a time; no public semantic or acceptance changes |
 | Audit | Independently compare a fixed version with requirements, diff, tests, and evidence | Read-only; cannot repair or approve its own changes |
+| Source Fidelity | Independently compare a frozen reference repository/version with mapped target symbols and behavior | Read-only; cannot repair, waive source gaps, or replace general Audit |
 
 Do not keep all roles running permanently. Skip Think when D0; do not create a second Main. If independent dispatch is unavailable, state that audit is not independent.
 
@@ -31,8 +32,12 @@ File count, task size, a routine failure, or an agent asking for more effort is 
 | Audit A0 `madv2_audit_a0_luna_high` | `gpt-6-luna` | `high` | Default independent audit |
 | Audit A1 `madv2_audit_a1_luna_xhigh` | `gpt-6-luna` | `xhigh` | Deep cross-boundary/constraint audit |
 | Audit A2 `madv2_audit_a2_luna_max` | `gpt-6-luna` | `max` | Critical acceptance gate |
+| Source Fidelity A1 `madv2_source_fidelity_a1_luna_xhigh` | `gpt-6-luna` | `xhigh` | Default frozen-reference comparison |
+| Source Fidelity A2 `madv2_source_fidelity_a2_luna_max` | `gpt-6-luna` | `max` | Critical source migration comparison |
 
 The current main session's suggested setting is Luna/high, but this skill cannot change it. Sol is reserved for Think. Never silently substitute a model or effort. See matching TOML templates in `../profiles/`.
+
+Source Fidelity is a distinct read-only-requested sidecar child role, not a renamed general Audit or a Controller DAG task. It uses A1 (`gpt-6-luna`/`xhigh`) by default and A2 (`gpt-6-luna`/`max`) for provider, billing, security, or public-contract migrations. It is required only for source-driven tasks and returns a separate SourceFidelityReceipt. After the writer freezes an output revision, Main dispatches it before formal handoff/integration and holds the path when its receipt or source-role runtime dispatch binding is missing, stale, or non-PASS. This avoids a DAG cycle where a writer handoff waits for a Source Fidelity dependency that cannot become schedulable until the writer is accepted. Runtime settings expose model/effort/lifecycle only; sandbox is not observed and event authenticity relies on the trusted controller/runtime input boundary.
 
 ## Dispatch contract
 
@@ -42,6 +47,6 @@ The optional pure helper `../scripts/route_contract.py` builds/parses the first 
 MAD_ROUTE_V2 {"role":"execute","design_ambiguity":"D0","implementation":"I1","audit_risk":"A0","stage":"CONTRACT_FROZEN","profile_id":"madv2_execute_i1_luna_high","task_id":"task-001","contract_rev":"v2.0.0-route-contract"}
 ```
 
-The marker is routing intent only. It is not a Hook receipt, proof of profile discovery, or runtime model provenance. Role-stage bindings are fixed: Think → `PRE_CONTRACT` and D1; Execute → `CONTRACT_FROZEN` and D0; Audit → `VERSION_FROZEN` and D0. Profile ID must agree with the corresponding I or A tier. Reject malformed, duplicate-key, unknown-field, unsafe task-id, wrong-stage, wrong-profile, and wrong-contract inputs. Unmarked unrelated messages are not errors for the helper.
+The marker is routing intent only. It is not a Hook receipt, proof of profile discovery, or runtime model provenance. Role-stage bindings are fixed: Think → `PRE_CONTRACT` and D1; Execute → `CONTRACT_FROZEN` and D0; Audit/Source Fidelity → `VERSION_FROZEN` and D0. Profile ID must agree with the corresponding I or A tier. Reject malformed, duplicate-key, unknown-field, unsafe task-id, wrong-stage, wrong-profile, and wrong-contract inputs. Unmarked unrelated messages are not errors for the helper.
 
 At every dispatch record the requested profile/explicit model-effort separately from the actual runtime provenance status: `PROFILE_VERIFIED`, `EXPLICIT_ROUTE_VERIFIED`, `ROUTE_UNVERIFIED`, or `ROUTE_MISMATCH`. A profile file or returned receipt is not provenance.

@@ -552,9 +552,7 @@ WorkerAdapter 仍为可信本地命令 runner，而非不可信代码沙箱；�
 
 因此，本轮关闭的是 V2.1.7 代码缺陷与本地回归门禁；真实运行时门禁仍保持：
 
-      NOT_ACCEPTED / ROUTE_UNVERIFIED / HOOK_UNVERIFIED
-
-允许下一步：在目标 Codex 版本能够提供 Hook 收据、Profile discovery 和实际 model/effort provenance 后，重新执行五个前向工作流并由独立审计责任人签发正式 receipt。当前不允许标记 `ACCEPTED`、`READY_TO_MERGE` 或独立路由通过。
+    NOT_ACCEPTED / ROUTE_UNVERIFIED / HOOK_UNVERIFIED
 
 ### 4.30 隔离 Codex 运行时认证门禁（2026-09-27）
 
@@ -614,3 +612,27 @@ WorkerAdapter 仍为可信本地命令 runner，而非不可信代码沙箱；�
 代码级运行时门禁现已对上述证据缺口 fail-closed；但真实 Codex 子线程的 Hook receipt、Profile discovery、实际 model/effort provenance、五个前向工作流和 Provider 仍未验证。因此状态继续保持：
 
       NOT_ACCEPTED / ROUTE_UNVERIFIED / HOOK_UNVERIFIED
+
+### 4.33 V2.2 Source Fidelity sidecar route/evidence binding (2026-10-01)
+
+本轮只改动 multi-agent-dev-v2，不涉及业务项目代码。针对原型忠实度 Agent 增加了专用 role/profile 绑定、child dispatch evidence 与 SourceFidelityReceipt 同 child ID 绑定；Source Fidelity 保持 Controller DAG 之外的只读请求 sidecar，以避免 handoff/dependency 死锁。
+
+- `RuntimeDispatchRequest` 增加 role 与 Profile class 强绑定；`source_fidelity` 不能借用普通 Audit Profile。
+- 新增 `bind-source-dispatch` 操作：对 Source Fidelity child lifecycle、app-server settings 中 observed model/effort、terminal 事件和原始输入 event hash 生成并持久化 route evidence。
+- Source-sensitive handoff 必须包含一个 Source Fidelity runtime dispatch evidence 与 PASS receipt；receipt 的 `producer_thread_id` 必须与 dispatch child ID 相同。孤立的完整静态 PASS receipt 无 dispatch evidence 时拒绝。
+- runtime adapter 没有观察 sandbox 字段；`read-only` 仅表示请求/Profile 配置，不是实际运行时 sandbox 证明。runtime events/evidence 目前没有密码学签名，完整性依赖可信 Controller 从 Codex app-server 取得原始事件；不得表述成 tamper-proof。
+- Source Fidelity sidecar 不是 TaskTemplate/DAG node；Main 负责显式判断来源敏感、冻结输出后在正式 handoff 前派发；Controller 不自动推断意图或自动创建 child。
+
+### 4.34 V2.2 Source Fidelity 最终独立审计与发布前复验（2026-10-01）
+
+独立只读复审结论：**PASS（代码与合同层，限定于可信 app-server→controller 事件入口）**。审计员未修改文件，复跑 V2 `108/108`，`compileall` 退出码 `0`，并用临时 StateStore 实测完整流程 `init → dispatch-next → bind-start → bind-source-dispatch → handoff`；合法证据进入 `AUDIT_PENDING`，无 Hook provenance 导致 Guard WARN 属于预期。孤立完整 PASS receipt、错误 child ID 和不匹配 role/profile 均被阻断。
+
+发布前复验：V2 `108/108`、V1 回归 `64/64`、`compileall` 通过、`git diff --check` 退出码 `0`，意图文件 secret-pattern scan clean。本机活动安装目录与发布包均为 55 files，manifest SHA-256 相同：
+
+    393544871c9ea264346d1b152176e9086eedef978263cc1c9c8a74eb552168f2
+
+Skill Creator `quick_validate.py` 未能运行：环境缺少 PyYAML（`ModuleNotFoundError: No module named 'yaml'`）；未安装依赖。包内 metadata 测试、全量测试与编译均通过。
+
+明确剩余限制：runtime evidence 无密码学签名、依赖可信事件入口；实际 sandbox 未观测；真实 Hook、Profile discovery、实际模型/effort provenance 与五个前向工作流未验证。因此只通过代码与合同层审计，不构成运行时验收；状态保持：
+
+    NOT_ACCEPTED / ROUTE_UNVERIFIED / HOOK_UNVERIFIED

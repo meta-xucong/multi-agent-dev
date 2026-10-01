@@ -15,5 +15,6 @@ The requested route is data in the TaskSpec. It is not proof of runtime use. A l
 | Test | gpt-6-luna / high |
 | Semantic Guard A0/A1/A2 | gpt-6-luna / high, xhigh, max |
 | Independent Audit A0/A1/A2 | gpt-6-luna / high, xhigh, max |
+| Source Fidelity A1/A2 | gpt-6-luna / xhigh, max |
 
 A requested model or effort may be changed only by a new manifest revision. Observed mismatch is ROUTE_MISMATCH and requires a gate hold.

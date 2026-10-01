@@ -13,6 +13,13 @@ from typing import Any, Iterable, Mapping
 
 from parallel_manifest import ContractError, HOOK_STATUSES, validate_id
 from route_provenance import RouteProvenance
+from route_contract import (
+    AUDIT_PROFILE,
+    IMPLEMENTATION_PROFILE,
+    PROFILE_ROUTE_CONTRACT,
+    SOURCE_FIDELITY_PROFILE,
+    THINK_PROFILE,
+)
 
 
 TERMINAL_EVENTS = {"turn/completed", "turn/failed", "turn/cancelled", "turn/interrupted"}
@@ -106,12 +113,27 @@ class RuntimeDispatchRequest:
     profile_id: str
     hook_status: str = "HOOK_UNVERIFIED"
     child_thread_id: str | None = None
+    sandbox_mode: str = "workspace-write"
+    role: str = "execute"
 
     def __post_init__(self) -> None:
         validate_id(self.parent_thread_id, "parent_thread_id")
         validate_id(self.task_id, "task_id")
         if not all(isinstance(value, str) and value for value in (self.requested_model, self.requested_effort, self.profile_id)):
             raise ContractError("requested route fields are required")
+        role_profiles = {
+            "think": {THINK_PROFILE},
+            "execute": set(IMPLEMENTATION_PROFILE.values()),
+            "audit": set(AUDIT_PROFILE.values()),
+            "source_fidelity": set(SOURCE_FIDELITY_PROFILE.values()),
+        }
+        if self.role not in role_profiles or self.profile_id not in role_profiles[self.role]:
+            raise ContractError("profile is not permitted for the requested runtime role")
+        expected_route = PROFILE_ROUTE_CONTRACT.get(self.profile_id)
+        if expected_route is None:
+            raise ContractError("profile is not in the frozen V2 route contract")
+        if (self.requested_model, self.requested_effort, self.sandbox_mode) != expected_route:
+            raise ContractError("requested route does not match the frozen V2 profile contract")
         if self.hook_status not in HOOK_STATUSES:
             raise ContractError("invalid hook status")
         if self.child_thread_id is not None:
@@ -146,12 +168,24 @@ class RuntimeDispatchResult:
         return {
             "parent_thread_id": self.request.parent_thread_id,
             "task_id": self.request.task_id,
+            "role": self.request.role,
             "profile_id": self.request.profile_id,
+            "request": {
+                "parent_thread_id": self.request.parent_thread_id,
+                "role": self.request.role,
+                "task_id": self.request.task_id,
+                "profile_id": self.request.profile_id,
+                "requested_model": self.request.requested_model,
+                "requested_effort": self.request.requested_effort,
+                "requested_sandbox_mode": self.request.sandbox_mode,
+                "hook_status": self.request.hook_status,
+            },
             "lifecycle": self.lifecycle,
             "child_thread_id": self.child_thread_id,
             "child_started_observed": self.child_started_observed,
             "observed_model": self.observed_model,
             "observed_effort": self.observed_effort,
+            "sandbox_observed": False,
             "child_completed": self.child_completed,
             "parent_close_allowed": self.parent_close_allowed,
             "route_provenance": self.route_provenance.as_dict(),

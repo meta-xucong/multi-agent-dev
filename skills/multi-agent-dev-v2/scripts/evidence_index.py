@@ -7,8 +7,8 @@ from typing import Any
 from parallel_manifest import ContractError, SHA256, validate_id
 from state_store import StateStore
 
-KINDS={"TEST_RECEIPT","DIFF_RECEIPT","HASH_RECEIPT","GUARD_RECEIPT","AUDIT_RECEIPT","ROUTE_PROVENANCE","HOOK_PROBE","PROFILE_PROBE","USER_DECISION"}
-SECRET_MARKERS=("api_key","sendkey","password","bearer ","sk-")
+KINDS={"TEST_RECEIPT","DIFF_RECEIPT","HASH_RECEIPT","GUARD_RECEIPT","AUDIT_RECEIPT","SOURCE_FIDELITY_RECEIPT","ROUTE_PROVENANCE","HOOK_PROBE","PROFILE_PROBE","USER_DECISION"}
+SECRET_PATTERNS=(re.compile(r"\bapi[_-]?key\b", re.I), re.compile(r"\bsendkey\b", re.I), re.compile(r"\bpassword\b", re.I), re.compile(r"\bbearer\s+", re.I), re.compile(r"(?:^|[^A-Za-z0-9])sk-[A-Za-z0-9]{16,}(?:$|[^A-Za-z0-9])", re.I))
 
 @dataclass(frozen=True)
 class EvidenceRecord:
@@ -27,7 +27,7 @@ class EvidenceRecord:
         if self.kind=="TEST_RECEIPT" and type(self.exit_code) is not int: raise ContractError("TEST_RECEIPT exit_code must be an integer")
         if self.artifact_hash and re.fullmatch(SHA256,self.artifact_hash) is None: raise ContractError("invalid artifact hash")
         serialized=" ".join(str(x or "") for x in (self.source,self.command_or_ui_step,self.limitations,self.payload or {})).lower()
-        if any(marker in serialized for marker in SECRET_MARKERS): raise ContractError("evidence contains secret-like text")
+        if any(pattern.search(serialized) for pattern in SECRET_PATTERNS): raise ContractError("evidence contains secret-like text")
 
     def as_dict(self) -> dict[str,Any]:
         return {"evidence_id":self.evidence_id,"run_id":self.run_id,"task_id":self.task_id,"kind":self.kind,"source":self.source,"manifest_hash":self.manifest_hash,"base_revision":self.base_revision,"result_revision":self.result_revision,"artifact_hash":self.artifact_hash,"command_or_ui_step":self.command_or_ui_step,"exit_code":self.exit_code,"observed_at":self.observed_at,"limitations":self.limitations,"redaction_status":self.redaction_status,"payload":self.payload or {}}

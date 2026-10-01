@@ -11,6 +11,7 @@ except ModuleNotFoundError:  # pragma: no cover - provides a clear result on uns
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 
 class ProfileTests(unittest.TestCase):
@@ -25,6 +26,8 @@ class ProfileTests(unittest.TestCase):
             "madv2_audit_a0_luna_high": ("gpt-6-luna", "high", "read-only"),
             "madv2_audit_a1_luna_xhigh": ("gpt-6-luna", "xhigh", "read-only"),
             "madv2_audit_a2_luna_max": ("gpt-6-luna", "max", "read-only"),
+            "madv2_source_fidelity_a1_luna_xhigh": ("gpt-6-luna", "xhigh", "read-only"),
+            "madv2_source_fidelity_a2_luna_max": ("gpt-6-luna", "max", "read-only"),
         }
         profile_files = list((ROOT / "profiles").glob("*.toml"))
         self.assertEqual(len(profile_files), len(expected))
@@ -35,6 +38,11 @@ class ProfileTests(unittest.TestCase):
                 self.assertEqual(
                     (profile["model"], profile["model_reasoning_effort"], profile["sandbox_mode"]),
                     expected[path.stem],
+                )
+                from route_contract import PROFILE_ROUTE_CONTRACT
+                self.assertEqual(
+                    PROFILE_ROUTE_CONTRACT[path.stem],
+                    (profile["model"], profile["model_reasoning_effort"], profile["sandbox_mode"]),
                 )
                 self.assertTrue(profile["description"].strip())
                 self.assertTrue(profile["developer_instructions"].strip())

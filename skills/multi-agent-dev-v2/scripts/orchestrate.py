@@ -2,8 +2,9 @@
 """Controller-only V2.1 orchestration CLI; stdin/stdout are one-line JSON."""
 from __future__ import annotations
 import argparse, json, sys, tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from parallel_manifest import ContractError, parse_manifest, validate_fs_paths, strict_loads
+from parallel_manifest import ContractError, canonical_hash, parse_manifest, validate_fs_paths, strict_loads
 from state_store import StateStore, StateError, StaleRevision, IdempotencyConflict, LeaseError
 from lease_store import LeaseStore
 from task_scheduler import Scheduler
@@ -22,6 +23,21 @@ def handle(state: StateStore, op: str, request: dict):
         runtime_request=RuntimeDispatchRequest(**(payload.get("request") or {}))
         result=collect_child_provenance(runtime_request,payload.get("events") or [])
         return reply(result.admissible,"OK" if result.admissible else "GATE_HOLD",result.as_dict(),evidence_refs=list(result.evidence_refs))
+    if op=="bind-source-dispatch":
+        runtime_request=RuntimeDispatchRequest(**(payload.get("request") or {}))
+        if runtime_request.role!="source_fidelity": raise ContractError("source dispatch binding requires the source_fidelity role")
+        run=state.get_run(payload["run_id"]); task=state.get_task(runtime_request.task_id)
+        if not run or not task: raise StateError("unknown source dispatch run or task")
+        if task["run_id"]!=payload["run_id"] or task["spec"].get("manifest_hash")!=run["manifest_hash"] or not task["spec"].get("source_fidelity_required"):
+            raise ContractError("source dispatch does not bind a frozen source-sensitive task")
+        if payload.get("manifest_hash")!=run["manifest_hash"] or not payload.get("result_revision") or not payload.get("evidence_id"):
+            raise ContractError("source dispatch evidence needs manifest, target revision and evidence id")
+        events=payload.get("events") or []
+        result=collect_child_provenance(runtime_request,events)
+        if not result.admissible: return reply(False,"GATE_HOLD",result.as_dict(),task["revision"],list(result.evidence_refs))
+        result_data=result.as_dict()
+        state.record_evidence({"evidence_id":payload["evidence_id"],"run_id":payload["run_id"],"task_id":runtime_request.task_id,"kind":"ROUTE_PROVENANCE","source":"codex-runtime","manifest_hash":run["manifest_hash"],"base_revision":payload.get("base_revision"),"result_revision":payload["result_revision"],"artifact_hash":canonical_hash(result_data),"command_or_ui_step":"Codex app-server source_fidelity child lifecycle/settings","exit_code":0,"observed_at":datetime.now(timezone.utc).isoformat(),"limitations":"Runtime events must come from the active Codex app-server; requested read-only sandbox is not runtime-observed.","redaction_status":"REDACTED","payload":{"runtime_dispatch":result_data,"runtime_events_sha256":canonical_hash(events),"sandbox_observed":False}})
+        return reply(True,"OK",{"runtime_dispatch":result_data,"runtime_events_sha256":canonical_hash(events),"sandbox_observed":False},task["revision"],[payload["evidence_id"]])
     if op=="init":
         raw_manifest=payload.get("manifest",payload); manifest=parse_manifest(raw_manifest)
         if payload.get("workspace_root"): validate_fs_paths(payload["workspace_root"],list(manifest.allowed_paths)+list(manifest.read_paths))
@@ -61,7 +77,10 @@ def handle(state: StateStore, op: str, request: dict):
             if packet.attempt_id!=attempt_id: raise ContractError("handoff attempt binding mismatch")
             if set(packet.changed_paths)-set(task["spec"].get("write_set",())): raise ContractError("handoff changed path escapes frozen write_set")
             frozen_packet=HandoffPacket(**{**packet.__dict__,"write_set":tuple(task["spec"].get("write_set",())),"lease_fencing_tokens":dict(fences) if fences else packet.lease_fencing_tokens})
-            guard=inspect_handoff(frozen_packet,run["manifest_hash"],int(payload.get("retry_count",0))); value={"packet":frozen_packet.as_dict(),"guard":guard.as_dict()}
+            source_fidelity_required=bool(task["spec"].get("source_fidelity_required",False))
+            if source_fidelity_required:
+                state.validate_source_fidelity_packet(task_id, frozen_packet.as_dict())
+            guard=inspect_handoff(frozen_packet,run["manifest_hash"],int(payload.get("retry_count",0)),source_fidelity_required=source_fidelity_required); value={"packet":frozen_packet.as_dict(),"guard":guard.as_dict()}
             if guard.decision in {"BLOCK","NEEDS_USER_DECISION"}: return reply(False,"GATE_HOLD",value,task["revision"],list(packet.evidence_refs))
             raw_idem={"operation":"handoff","payload":payload,"actor_id":actor,"expected_revision":expected,"controller_epoch":epoch}
             if idem:
@@ -121,7 +140,7 @@ def handle(state: StateStore, op: str, request: dict):
     raise ContractError("unknown operation")
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(); parser.add_argument("operation",choices=["init","plan","dispatch-next","bind-start","checkpoint","handoff","attach-receipt","retry","status","cancel","recover","integrate-check","runtime-gate"]); parser.add_argument("--state-dir",default="")
+    parser=argparse.ArgumentParser(); parser.add_argument("operation",choices=["init","plan","dispatch-next","bind-start","checkpoint","handoff","attach-receipt","retry","status","cancel","recover","integrate-check","runtime-gate","bind-source-dispatch"]); parser.add_argument("--state-dir",default="")
     args=parser.parse_args(argv)
     try:
         request=strict_loads(sys.stdin.read().strip() or "{}")

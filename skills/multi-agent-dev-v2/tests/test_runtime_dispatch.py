@@ -16,6 +16,7 @@ from runtime_dispatch import (  # noqa: E402
 )
 from orchestrate import handle  # noqa: E402
 from state_store import StateStore  # noqa: E402
+from parallel_manifest import ContractError  # noqa: E402
 
 
 def request(**overrides):
@@ -163,6 +164,49 @@ class RuntimeDispatchTests(unittest.TestCase):
         self.assertFalse(response["ok"])
         self.assertEqual(response["code"], "GATE_HOLD")
         self.assertEqual(response["data"]["route_provenance"]["route_status"], "ROUTE_MISMATCH")
+
+    def test_source_fidelity_profile_cannot_claim_an_arbitrary_matching_route(self):
+        with self.assertRaisesRegex(ContractError, "does not match the frozen V2 profile contract"):
+            request(
+                role="source_fidelity",
+                profile_id="madv2_source_fidelity_a2_luna_max",
+                requested_model="evil-model",
+                requested_effort="low",
+                sandbox_mode="read-only",
+            )
+
+    def test_source_fidelity_route_requires_read_only_a1_or_a2_contract(self):
+        source_request = request(
+            role="source_fidelity",
+            profile_id="madv2_source_fidelity_a1_luna_xhigh",
+            requested_model="gpt-6-luna",
+            requested_effort="xhigh",
+            sandbox_mode="read-only",
+        )
+        result = collect_child_provenance(
+            source_request,
+            [child_started(), settings(effort="xhigh"), completed()],
+        )
+        self.assertEqual(result.route_provenance.route_status, "EXPLICIT_ROUTE_VERIFIED")
+        self.assertTrue(result.admissible)
+        with self.assertRaisesRegex(ContractError, "does not match"):
+            request(
+                role="source_fidelity",
+                profile_id="madv2_source_fidelity_a1_luna_xhigh",
+                requested_model="gpt-6-luna",
+                requested_effort="xhigh",
+                sandbox_mode="workspace-write",
+            )
+
+    def test_source_fidelity_role_rejects_a_valid_but_wrong_audit_profile(self):
+        with self.assertRaisesRegex(ContractError, "not permitted for the requested runtime role"):
+            request(
+                role="source_fidelity",
+                profile_id="madv2_audit_a0_luna_high",
+                requested_model="gpt-6-luna",
+                requested_effort="high",
+                sandbox_mode="read-only",
+            )
 
 
 if __name__ == "__main__":

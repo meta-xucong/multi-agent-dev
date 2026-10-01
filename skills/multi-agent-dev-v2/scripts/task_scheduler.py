@@ -63,7 +63,8 @@ class Scheduler:
             try:
                 self.state.validate_audit_receipt_binding(receipt)
             except (StateError, ValueError) as exc:
-                blockers.append(item["task_id"]+":AUDIT_BINDING_REQUIRED")
+                spec=item.get("spec") or {}
+                blockers.append(item["task_id"]+(":SOURCE_FIDELITY_REQUIRED" if spec.get("source_fidelity_required") else ":AUDIT_BINDING_REQUIRED"))
                 continue
             provenance=receipt.get("provenance",{})
             if (any(receipt.get(key)!="PASS" for key in ("scope_result","behavior_result","evidence_result")) or receipt.get("route_result") not in {"PROFILE_VERIFIED","EXPLICIT_ROUTE_VERIFIED"} or provenance.get("hook_status") not in {"HOOK_ENFORCED","HOOK_VERIFIED"} or provenance.get("source") not in {"codex-runtime","profile-runtime","hook-runtime"} or not provenance.get("observed_model") or not provenance.get("observed_effort") or not provenance.get("evidence_refs") or receipt.get("required_corrections")):

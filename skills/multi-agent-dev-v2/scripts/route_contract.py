@@ -34,7 +34,23 @@ AUDIT_PROFILE = {
     "A1": "madv2_audit_a1_luna_xhigh",
     "A2": "madv2_audit_a2_luna_max",
 }
+SOURCE_FIDELITY_PROFILE = {
+    "A1": "madv2_source_fidelity_a1_luna_xhigh",
+    "A2": "madv2_source_fidelity_a2_luna_max",
+}
 THINK_PROFILE = "madv2_think_sol_xhigh"
+PROFILE_ROUTE_CONTRACT = {
+    THINK_PROFILE: ("gpt-6-sol", "xhigh", "read-only"),
+    "madv2_execute_i0_luna_low": ("gpt-6-luna", "low", "workspace-write"),
+    "madv2_execute_i1_luna_high": ("gpt-6-luna", "high", "workspace-write"),
+    "madv2_execute_i2_luna_xhigh": ("gpt-6-luna", "xhigh", "workspace-write"),
+    "madv2_execute_i3_luna_max": ("gpt-6-luna", "max", "workspace-write"),
+    "madv2_audit_a0_luna_high": ("gpt-6-luna", "high", "read-only"),
+    "madv2_audit_a1_luna_xhigh": ("gpt-6-luna", "xhigh", "read-only"),
+    "madv2_audit_a2_luna_max": ("gpt-6-luna", "max", "read-only"),
+    "madv2_source_fidelity_a1_luna_xhigh": ("gpt-6-luna", "xhigh", "read-only"),
+    "madv2_source_fidelity_a2_luna_max": ("gpt-6-luna", "max", "read-only"),
+}
 
 
 class RouteContractError(ValueError):
@@ -80,6 +96,14 @@ def validate_payload(payload: Any) -> dict[str, str]:
         if stage != "VERSION_FROZEN" or payload["design_ambiguity"] != "D0":
             raise RouteContractError("audit requires D0 at VERSION_FROZEN")
         expected_profile = AUDIT_PROFILE[payload["audit_risk"]]
+    elif role == "source_fidelity":
+        if stage != "VERSION_FROZEN" or payload["design_ambiguity"] != "D0":
+            raise RouteContractError("source_fidelity requires D0 at VERSION_FROZEN")
+        if payload["implementation"] != "I1":
+            raise RouteContractError("source_fidelity uses the fixed I1 inspection tier")
+        if payload["audit_risk"] not in SOURCE_FIDELITY_PROFILE:
+            raise RouteContractError("source_fidelity requires A1 or A2")
+        expected_profile = SOURCE_FIDELITY_PROFILE[payload["audit_risk"]]
     else:
         raise RouteContractError("invalid role")
     if payload["profile_id"] != expected_profile:

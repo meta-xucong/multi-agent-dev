@@ -45,13 +45,14 @@
 
 - **模型要求**:
   - `gpt-6-sol/xhigh` (思考 Agent，复杂设计决策)
-  - `gpt-6-luna/high` (执行 Agent，简单任务)
-  - `gpt-6-luna/max` (执行/审计 Agent，复杂任务)
+  - `gpt-6-luna/low|high|xhigh|max` (按实现风险分配执行强度)
+  - `gpt-6-luna/high|xhigh|max` (按审计风险分配审计强度)
+  - `gpt-6-luna/xhigh|max` (Source Fidelity A1/A2，仅来源驱动任务)
 
 - **核心依赖**:
   - Codex 多 Agent 协作 API: `spawn_agent`, `wait_threads`, `read_thread`, `closeAgent`
   - Codex Hook 系统: `PreToolUse`, `Stop`, `Interrupt`, `SessionEnd`
-  - `MAD_ROUTE_V1` 模型路由硬门禁
+  - `MAD_ROUTE_V2` 路由意图合同与子线程运行时凭证门禁；当前 Hook/Profile 发现与实际 sandbox 仍须独立验证
 
 ### Claude Code 技术栈
 
@@ -66,10 +67,11 @@
 ## 关键特性
 
 ### Codex 平台 — `multi-agent-dev-v2`（推荐）
-- **四职责协作模型**: 主控、按需思考、执行、独立审计
+- **分工协作模型**: 主控、按需思考、执行、独立审计；来源驱动任务额外启用只读 Source Fidelity 旁路 Agent
 - **D/I/A 风险路由**: 按设计、实现、审计风险选择角色和思考强度
 - **范围与证据门禁**: 防止越界开发、方向漂移和无证据放行
 - **运行时派发门禁**: 校验子线程启动、实际设置、终态和父线程生命周期
+- **原型忠实度纠偏**: 对冻结仓库/历史版本与实现做映射对照；必须先冻结 writer 输出，再在正式 handoff 前运行旁路审计，Source Fidelity 不是 DAG 依赖，避免 handoff 调度死锁
 - **ServerChan 微信通知**: 任务终态自动推送
 
 ### Codex 平台 — `multi-agent-dev`（V1/兼容）

@@ -15,6 +15,9 @@
 9. [开发文档审计报告](11-v2-design-document-audit-report.md)：固定文档版本的审计结果、修正记录和当前独立复审门禁。
 10. [原 V2 验证与独立审计计划](03-verification-and-audit-plan.md)：Hook、Profile、运行时路由和原五个工作流门禁。
 11. [实施证据](05-implementation-evidence.md)：历史和当前证据；不得把配置、模拟测试或自述写成真实运行时证明。
+12. [Runtime 子线程派发加固](13-runtime-dispatch-hardening.md)：child 生命周期与 observed route 证据边界。
+13. [Source Fidelity Agent 设计与实施](14-source-fidelity-agent-development.md)：冻结原型对照、旁路调度、纠偏与凭证门禁。
+14. [Source Fidelity Agent 独立审计](15-source-fidelity-agent-audit.md)：缺陷修复、复验结果与剩余运行时信任限制。
 
 ## 冻结原则
 

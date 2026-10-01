@@ -18,7 +18,7 @@ TASK_STATES = {"PLANNED","LEASED","RUNNING","CHECKPOINTED","WAITING_HANDOFF","AU
 class ContractError(ValueError): pass
 
 MANIFEST_FIELDS={"contract_rev","run_id","parent_run_id","manifest_revision","manifest_hash","supersedes","goal","non_goals","hard_constraints","rule_sources","base_revision","base_tree_hash","allowed_paths","forbidden_paths","read_paths","D","I","A","stage","owners","task_templates","concurrency_limit","total_agent_limit","evidence_requirements","route_status","hook_status","side_effect_policy","created_by","created_at"}
-TASK_FIELDS={"task_id","role","stage","D","I","A","requested_model","requested_effort","sandbox_mode","read_set","write_set","namespace","dependency_ids","concurrency_group","timeout_seconds","max_retries","side_effect_class","acceptance_checks","evidence_requirements"}
+TASK_FIELDS={"task_id","role","stage","D","I","A","requested_model","requested_effort","sandbox_mode","read_set","write_set","namespace","dependency_ids","concurrency_group","timeout_seconds","max_retries","side_effect_class","acceptance_checks","evidence_requirements","source_fidelity_required","source_mapping_revision","source_reference_commit","source_reference_manifest_sha256","source_target_manifest_sha256","source_target_baseline_manifest_sha256","source_mapping_manifest_sha256"}
 
 def strict_loads(text: str) -> Any:
     def pairs(items):
@@ -80,6 +80,10 @@ class TaskTemplate:
     dependency_ids: tuple[str,...]=(); concurrency_group: str="default"
     timeout_seconds: int=900; max_retries: int=1; side_effect_class: str="none"
     acceptance_checks: tuple[str,...]=(); evidence_requirements: tuple[str,...]=()
+    source_fidelity_required: bool=False; source_mapping_revision: str|None=None
+    source_reference_commit: str|None=None; source_reference_manifest_sha256: str|None=None
+    source_target_manifest_sha256: str|None=None; source_target_baseline_manifest_sha256: str|None=None
+    source_mapping_manifest_sha256: str|None=None
 
     def __post_init__(self):
         validate_id(self.task_id,"task_id")
@@ -87,13 +91,16 @@ class TaskTemplate:
         if self.D not in {"D0","D1"} or self.I not in {"I0","I1","I2","I3"} or self.A not in {"A0","A1","A2"}: raise ContractError("invalid D/I/A")
         if not all(isinstance(value,str) and value for value in (self.requested_model,self.requested_effort,self.sandbox_mode)): raise ContractError("requested route is required")
         if self.side_effect_class not in {"none","local-write","external"}: raise ContractError("invalid side effect class")
+        if type(self.source_fidelity_required) is not bool: raise ContractError("source_fidelity_required must be boolean")
+        if self.source_fidelity_required and self.source_mapping_revision is not None and not self.source_mapping_revision.strip(): raise ContractError("source mapping revision is empty")
+        if self.source_fidelity_required and (not self.source_mapping_revision or not self.source_reference_commit or not self.source_reference_manifest_sha256 or re.fullmatch(SHA256,self.source_reference_manifest_sha256) is None or not self.source_target_manifest_sha256 or re.fullmatch(SHA256,self.source_target_manifest_sha256) is None or not self.source_target_baseline_manifest_sha256 or re.fullmatch(SHA256,self.source_target_baseline_manifest_sha256) is None or not self.source_mapping_manifest_sha256 or re.fullmatch(SHA256,self.source_mapping_manifest_sha256) is None): raise ContractError("source-sensitive task requires frozen reference, target and mapping manifests")
         if self.timeout_seconds<=0 or self.max_retries<0: raise ContractError("invalid task limits")
         if self.sandbox_mode=="read-only" and (self.write_set or self.side_effect_class!="none"): raise ContractError("read-only task cannot write or have side effects")
         for collection in (self.read_set,self.write_set,self.namespace): _paths(list(collection))
         for dep in self.dependency_ids: validate_id(dep,"dependency_id")
 
     def payload(self) -> dict[str,Any]:
-        return {"task_id":self.task_id,"role":self.role,"stage":self.stage,"D":self.D,"I":self.I,"A":self.A,"requested_model":self.requested_model,"requested_effort":self.requested_effort,"sandbox_mode":self.sandbox_mode,"read_set":list(self.read_set),"write_set":list(self.write_set),"namespace":list(self.namespace),"dependency_ids":list(self.dependency_ids),"concurrency_group":self.concurrency_group,"timeout_seconds":self.timeout_seconds,"max_retries":self.max_retries,"side_effect_class":self.side_effect_class,"acceptance_checks":list(self.acceptance_checks),"evidence_requirements":list(self.evidence_requirements)}
+        return {"task_id":self.task_id,"role":self.role,"stage":self.stage,"D":self.D,"I":self.I,"A":self.A,"requested_model":self.requested_model,"requested_effort":self.requested_effort,"sandbox_mode":self.sandbox_mode,"read_set":list(self.read_set),"write_set":list(self.write_set),"namespace":list(self.namespace),"dependency_ids":list(self.dependency_ids),"concurrency_group":self.concurrency_group,"timeout_seconds":self.timeout_seconds,"max_retries":self.max_retries,"side_effect_class":self.side_effect_class,"acceptance_checks":list(self.acceptance_checks),"evidence_requirements":list(self.evidence_requirements),"source_fidelity_required":self.source_fidelity_required,"source_mapping_revision":self.source_mapping_revision,"source_reference_commit":self.source_reference_commit,"source_reference_manifest_sha256":self.source_reference_manifest_sha256,"source_target_manifest_sha256":self.source_target_manifest_sha256,"source_target_baseline_manifest_sha256":self.source_target_baseline_manifest_sha256,"source_mapping_manifest_sha256":self.source_mapping_manifest_sha256}
 
 @dataclass(frozen=True)
 class ScopeManifest:

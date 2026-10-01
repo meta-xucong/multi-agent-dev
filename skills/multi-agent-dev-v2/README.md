@@ -29,13 +29,19 @@ The deterministic tests validate package metadata, routing contract, profiles, a
 
 ## V2.1 controlled parallel controller
 
-The package now includes a local, controller-owned orchestration core. orchestrate.py accepts one JSON request on stdin and exposes init, plan, dispatch-next, bind-start, checkpoint, handoff, attach-receipt, status, cancel, recover, and integrate-check. State is kept in a caller-selected private SQLite file with WAL/FULL durability, CAS revisions, idempotency, outbox events, controller epochs, fenced leases, dependency scheduling, and fail-closed Guard/Audit gates.
+The package now includes a local, controller-owned orchestration core. orchestrate.py accepts one JSON request on stdin and exposes init, plan, dispatch-next, bind-start, checkpoint, handoff, attach-receipt, status, cancel, recover, integrate-check, runtime-gate, and bind-source-dispatch. State is kept in a caller-selected private SQLite file with WAL/FULL durability, CAS revisions, idempotency, outbox events, controller epochs, fenced leases, dependency scheduling, and fail-closed Guard/Audit gates.
 
 Workers do not write the ledger. They submit structured HandoffPacket facts; the controller advances a task only after Guard and an independent AuditReceipt. Requested model/effort fields remain requests until runtime provenance is observed. capability_registry.py only reads the bundled TOML metadata and does not install or activate Profiles.
 
 The V2.1 implementation is still a development component: the tests and local CLI probes do not prove Codex Hook activation, Profile discovery in the live runtime, actual model/effort use, or the forward workflow gates. Keep external side effects held until those gates have independent evidence.
 
 The controller also provides evidence_index.py for version-bound evidence records, notification_state.py for idempotent notification intents, and StateStore outbox claim/complete/recovery methods for bounded external side effects. The tester handoff is documented in docs/multi-agent-dev-v2/12-v2-tester-handoff.md.
+
+## Source Fidelity Agent
+
+For a source-driven migration, Main must mark the implementation TaskSpec as source-sensitive and, after the writer freezes a target revision, dispatch a separate read-only Source Fidelity sidecar before formal handoff. It is intentionally outside the controller DAG: a DAG dependency would deadlock because the implementation handoff is itself gated on the sidecar receipt. Main explicitly decides when source fidelity is required and dispatches the child; the controller does not infer intent or auto-dispatch. Use the `source_fidelity` runtime role with the `madv2_source_fidelity_a1_luna_xhigh` profile by default; use A2 for provider, billing, security, or public-contract migrations. `scripts/source_fidelity.py` independently hashes the frozen reference and target trees, checks mapped files/symbols/fragments and conservative structural drift, and emits a version-bound receipt. Handoff now requires both the PASS receipt and a matching source-role runtime dispatch record bound to the same child thread. The record verifies observed model/effort and lifecycle, but actual sandbox mode is not observed and the event stream is not cryptographically signed; see `references/source-fidelity.md` for this trust boundary. This does not replace the ordinary independent Audit or prove live Codex Hook/Profile discovery.
+
+The formal design and code-level audit are in `docs/source-fidelity-agent-design.md` and `docs/source-fidelity-agent-audit.md`.
 
 ## Runtime child dispatch gate
 

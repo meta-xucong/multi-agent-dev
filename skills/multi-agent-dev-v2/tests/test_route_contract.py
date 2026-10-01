@@ -49,6 +49,27 @@ class RouteContractTests(unittest.TestCase):
         for tier, profile in route.IMPLEMENTATION_PROFILE.items():
             item = payload(implementation=tier, profile_id=profile)
             self.assertEqual(route.validate_payload(item)["profile_id"], profile)
+        for tier, profile in route.SOURCE_FIDELITY_PROFILE.items():
+            item = payload(
+                role="source_fidelity",
+                audit_risk=tier,
+                stage="VERSION_FROZEN",
+                profile_id=profile,
+            )
+            self.assertEqual(route.validate_payload(item)["profile_id"], profile)
+
+    def test_source_fidelity_requires_critical_audit_tier(self) -> None:
+        item = payload(
+            role="source_fidelity",
+            audit_risk="A1",
+            stage="VERSION_FROZEN",
+            profile_id=route.SOURCE_FIDELITY_PROFILE["A1"],
+        )
+        self.assertEqual(route.validate_payload(item)["role"], "source_fidelity")
+        with self.assertRaises(route.RouteContractError):
+            route.validate_payload({**item, "audit_risk": "A0", "profile_id": "madv2_source_fidelity_a1_luna_xhigh"})
+        with self.assertRaises(route.RouteContractError):
+            route.validate_payload({**item, "implementation": "I2"})
         for tier, profile in route.AUDIT_PROFILE.items():
             item = payload(
                 role="audit",
