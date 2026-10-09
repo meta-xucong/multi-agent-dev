@@ -7,7 +7,7 @@ The requested route is data in the TaskSpec. It is not proof of runtime use. A l
 | Main session / integration | gpt-6-luna / high |
 | Controller state machine | no LLM |
 | Controller plan suggestion | gpt-6-luna / high |
-| Think | gpt-6-sol / xhigh |
+| Think | gpt-6.1-sol / xhigh |
 | Execute I0 | gpt-6-luna / low |
 | Execute I1 | gpt-6-luna / high |
 | Execute I2 | gpt-6-luna / xhigh |

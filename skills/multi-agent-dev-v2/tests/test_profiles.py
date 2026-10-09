@@ -17,7 +17,7 @@ class ProfileTests(unittest.TestCase):
     @unittest.skipIf(tomllib is None, "Python 3.11+ is required to parse profile TOML")
     def test_each_route_profile_matches_the_frozen_matrix(self) -> None:
         expected = {
-            "madv2_think_sol_xhigh": ("gpt-6-sol", "xhigh", "read-only"),
+            "madv2_think_sol_xhigh": ("gpt-6.1-sol", "xhigh", "read-only"),
             "madv2_execute_i0_luna_low": ("gpt-6-luna", "low", "workspace-write"),
             "madv2_execute_i1_luna_high": ("gpt-6-luna", "high", "workspace-write"),
             "madv2_execute_i2_luna_xhigh": ("gpt-6-luna", "xhigh", "workspace-write"),
