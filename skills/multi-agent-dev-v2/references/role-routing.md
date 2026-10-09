@@ -23,7 +23,7 @@ File count, task size, a routine failure, or an agent asking for more effort is 
 
 | Role/profile | Requested model | Requested effort | Use |
 | --- | --- | --- | --- |
-| Think `madv2_think_sol_xhigh` | `gpt-6-sol` | `xhigh` | D1 only; isolated reasoning task |
+| Think `madv2_think_sol_xhigh` | `gpt-6.1-sol` | `xhigh` | D1 only; isolated reasoning task |
 | Execute I0 `madv2_execute_i0_luna_low` | `gpt-6-luna` | `low` | Every I0 admission condition is evidenced |
 | Execute I1 `madv2_execute_i1_luna_high` | `gpt-6-luna` | `high` | Normal frozen-contract work |
 | Execute I2 `madv2_execute_i2_luna_xhigh` | `gpt-6-luna` | `xhigh` | A specific I2 trigger is recorded |
