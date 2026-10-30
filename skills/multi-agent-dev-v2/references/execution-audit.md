@@ -16,6 +16,6 @@ Understand the requested outcome, relevant project instructions, actual call pat
 
 ## Independent audit (conditional)
 
-Use a separate read-only auditor when the user requests one or an existing project acceptance rule requires one. Otherwise, a concise self-review of the changed behavior and diff is sufficient for routine work. Do not turn audit into a general security review or require route/provenance evidence unless the requested outcome or project rule depends on it.
+Use a separate read-only auditor when the user requests one or an existing project acceptance rule requires one. Otherwise, a concise self-review of the changed behavior and diff is sufficient for routine work. The scope monitor described in `SKILL.md` runs separately and does not constitute a full independent audit. Do not turn audit into a general security review or require route/provenance evidence unless the requested outcome or project rule depends on it.
 
 When an audit is required, bind it to the actual request and changed version, and ask it to identify only concrete scope violations, behavior defects, or missing required evidence. It may return `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE`; do not demand evidence unrelated to the acceptance criteria. A failed finding should lead to the smallest correction supported by the request. Missing optional evidence is not a blocker.

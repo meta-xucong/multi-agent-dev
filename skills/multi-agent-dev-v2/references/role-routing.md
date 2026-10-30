@@ -9,6 +9,7 @@ Use this reference only for requested multi-agent delegation. The parent `SKILL.
 | Main | Read project rules, freeze contract, classify D/I/A, coordinate one writer, correct drift, integrate and report | Owns orchestration; implementation only when explicitly acting as the sole writer |
 | Think | Resolve a material design/source/contract/acceptance ambiguity; return the minimum decision and risks | Read-only; no code, tests, or scope expansion |
 | Execute | Implement the frozen contract and targeted tests in its owned boundary | One writer at a time; no public semantic or acceptance changes |
+| Scope monitor | Independently inspect actual task changes for concrete violations of the requested scope and Scope discipline | Read-only; report to Main; recheck corrections |
 | Audit | Independently compare a fixed version with requirements, diff, tests, and evidence | Read-only; cannot repair or approve its own changes |
 
 Do not keep all roles running permanently. Skip Think when D0; do not create a second Main. If independent dispatch is unavailable, state that audit is not independent.
