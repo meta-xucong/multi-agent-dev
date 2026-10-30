@@ -1,11 +1,13 @@
-# Runtime dispatch and child provenance
+# Optional runtime dispatch and child provenance
+
+Use this helper only when the user requests this dispatch mechanism or the task explicitly depends on verified route compliance. Missing route evidence must not block work whose requested behavior does not depend on it. The parent `SKILL.md` Scope discipline controls.
 
 This package treats Codex Hook availability as an external capability. The
 runtime dispatcher therefore enforces the parts that remain under the
 controller's control: explicit requested route, child-thread lifecycle,
 observed model/effort, and fail-closed handoff.
 
-## Required lifecycle
+## Lifecycle when this helper is requested
 
 The parent must remain alive until the child reaches a terminal turn event:
 
@@ -25,7 +27,9 @@ update event.  Model/effort fields copied into a thread-start event are not
 independent route evidence.  Activity items are accepted only when scoped to
 the requested parent thread.
 
-## Gate rules
+## Evidence findings
+
+The statuses below describe the dispatch evidence. Treat them as acceptance gates only when the requested outcome explicitly requires a verified route.
 
 - No child thread ID: `SPAWN_FAILED`/`CHILD_THREAD_NOT_STARTED`.
 - Child exists but no model or effort is observed: `ROUTE_UNVERIFIED`.

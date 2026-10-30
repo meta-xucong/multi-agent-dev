@@ -1,17 +1,9 @@
-# Controlled parallel orchestration
+# Optional controller-based parallel orchestration
 
-The main session owns user intent, scope freeze, authorization, integration and reporting. The SQLite Controller is the only state writer and owns DAG scheduling, controller epoch, CAS, leases, retry budget and recovery. Workers return facts and never edit the ledger.
+Use this document only when the user explicitly requests the V2.1 controller workflow. It is not the default for ordinary implementation or review. The parent `SKILL.md` scope discipline remains controlling.
 
-## Lifecycle
+The controller currently uses SHA-256 hashes for manifests, task bindings, diffs, and audit receipts. Do not invoke it unless the user explicitly authorizes those hash operations. A request to implement a feature or use multi-agent work alone does not authorize hash generation or verification.
 
-1. Freeze a ScopeManifest and compute its hash.
-2. Add immutable TaskSpecs with disjoint write sets and namespaces.
-3. Dispatch only ready tasks; acquire all namespace leases atomically.
-4. Bind start, checkpoint, and submit a HandoffPacket.
-5. Deterministic/Semantic Guard evaluates the packet.
-6. An independent auditor binds an AuditReceipt to manifest, result revision and diff hash.
-7. Only accepted tasks can make the Run READY_TO_MERGE.
+When explicitly authorized, follow the controller's existing CLI and project documentation. Keep write ownership and task boundaries clear, but define only the task structure needed for the requested work. Do not introduce additional guards, retries, recovery cases, evidence records, or audit steps unless the user or existing project requirements call for them.
 
-PLANNED, RETRYABLE, LEASED, RUNNING, CHECKPOINTED, WAITING_HANDOFF, AUDIT_PENDING and ACCEPTED are task states. HANDOFF_READY is evidence, not a persisted state.
-
-Use scripts/orchestrate.py with one JSON request per invocation. Keep the state database private to the run. External side effects are written to the outbox first, then claimed and completed by a separate notifier.
+Controller records and local probes establish only what they directly observe. Do not infer live Hook, profile, model, effort, or external-service behavior without evidence when the requested workflow depends on it. If it does not depend on those facts, proceed without collecting them.

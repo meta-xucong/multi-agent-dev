@@ -1,41 +1,21 @@
-# Scope control, execution, and audit
+# Scope, execution, and optional audit
 
-## Freeze before writing
+The `Scope discipline` section in the parent `SKILL.md` controls this workflow. This reference must not be used to add gates or checks that the request and project do not require.
 
-Capture in a short task record:
+## Before writing
 
-1. User goal verbatim, non-goals, relevant project documents, and each hard constraint ID.
-2. Initial commit/worktree status and pre-existing changes; preserve them as baseline.
-3. Allowed files/symbols or change types, one writer, dependencies, and acceptance evidence.
-4. D/I/A classification with one factual reason per non-default tier; requested route and current provenance status.
+Understand the requested outcome, relevant project instructions, actual call path, and existing implementation. Inspect the working tree when needed to avoid overwriting existing user work. Keep a concise scope note only when delegation or a multi-step task makes one useful; do not create a task record, enumerate artificial non-goals, or freeze allowed files for a simple change.
 
-An allowed file is not permission for unrelated behavior inside it. “Do not add variables” or “reuse this exact method” is an explicit contract and must be checked against the complete diff and symbols, including renames and indirect equivalents.
+## Implement and validate
 
-## Execute and correct continuously
+- Make the smallest sufficient change using project conventions and existing mechanisms.
+- Add a fallback only with verified evidence for its existing consumer, call path, and dependency on that exact behavior.
+- Add edge-case handling only for a reachable, verified P0 scenario under the project's established criteria.
+- Run project-required checks and the minimum additional validation tied to the requested behavior. Do not generate or verify hashes/checksums unless explicitly requested.
+- If an assumption proves unsupported, omit the dependent behavior and continue the rest of the requested work where possible. Ask only when the unresolved point materially prevents the requested outcome.
 
-- Make the smallest change supported by the frozen contract and source evidence. Reuse existing types, variables, algorithms, and tests when semantically appropriate.
-- After each coherent step, inspect the diff against the goal, non-goals, hard constraints, and allowed boundary. Do not postpone drift detection until the end.
-- On an unsupported assumption, conflicting document, scope drift, unexpected variable/method/API, repeated no-evidence loop, or route mismatch, stop only the affected path. Record the evidence and choose: bounded correction, evidence request, contract return, or user decision.
-- A corrector may change only the authorized implementation. If the correction changes contract, scope, or acceptance, return to Main for a new frozen revision before further writing.
-- Handoff requires confirmation that the prior writer stopped and no write is in flight. Never assign overlapping write boundaries concurrently.
+## Independent audit (conditional)
 
-## Freeze and audit
+Use a separate read-only auditor when the user requests one or an existing project acceptance rule requires one. Otherwise, a concise self-review of the changed behavior and diff is sufficient for routine work. Do not turn audit into a general security review or require route/provenance evidence unless the requested outcome or project rule depends on it.
 
-Freeze the exact diff/version before audit. Give the auditor the original request, project rules, frozen contract, baseline and changed files, tests/evidence, and known limitations—not the author's preferred conclusion or a suggested repair. The auditor must be a different agent/person and read-only.
-
-The auditor checks:
-
-- user/project scope and every hard constraint against actual diff and symbols;
-- no unrequested features, redundant variables/methods, unnecessary renames, parallel logic, or unrelated formatting/dependencies;
-- source mapping and deviations where reuse is required;
-- expected behavior, negative/error/recovery paths, and independent test evidence;
-- requested vs actual route, Hook status vs provenance, and all unsupported claims;
-- baseline preservation and secret/privacy exposure.
-
-Return one of `PASS`, `FAIL`, `INSUFFICIENT_EVIDENCE`, with exact file/symbol/test evidence. Missing evidence is not a pass. The auditor never edits the reviewed version or self-approves a repair.
-
-## Rejection loop and release
-
-For `FAIL`, assign a bounded fix to the writer. For `INSUFFICIENT_EVIDENCE`, gather the missing evidence or state a real blocker; do not change code merely to silence the finding. Freeze a new version and have the independent auditor re-review it. Keep a compact issue ledger so the same no-evidence attempt is not repeated.
-
-Release only when required tests and the independent audit pass, with any route uncertainty explicitly separated from functional acceptance. If independent audit, runtime provenance, or another required gate is unavailable, report exactly which gate remains open; do not label the result accepted. Never use successful tests to excuse scope violations.
+When an audit is required, bind it to the actual request and changed version, and ask it to identify only concrete scope violations, behavior defects, or missing required evidence. It may return `PASS`, `FAIL`, or `INSUFFICIENT_EVIDENCE`; do not demand evidence unrelated to the acceptance criteria. A failed finding should lead to the smallest correction supported by the request. Missing optional evidence is not a blocker.

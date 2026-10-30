@@ -1,4 +1,6 @@
-# Role and route rules
+# Optional role and route guidance
+
+Use this reference only for requested multi-agent delegation. The parent `SKILL.md` Scope discipline controls. Do not perform D/I/A classification, profile selection, or provenance collection as ceremony; use only the parts needed to route the requested work. Independent audit is conditional as described in `execution-audit.md`, not an automatic A0 step.
 
 ## Logical roles
 
@@ -28,7 +30,7 @@ File count, task size, a routine failure, or an agent asking for more effort is 
 | Execute I1 `madv2_execute_i1_luna_high` | `gpt-6-luna` | `high` | Normal frozen-contract work |
 | Execute I2 `madv2_execute_i2_luna_xhigh` | `gpt-6-luna` | `xhigh` | A specific I2 trigger is recorded |
 | Execute I3 `madv2_execute_i3_luna_max` | `gpt-6-luna` | `max` | Exceptional, human-reviewed I3 only |
-| Audit A0 `madv2_audit_a0_luna_high` | `gpt-6-luna` | `high` | Default independent audit |
+| Audit A0 `madv2_audit_a0_luna_high` | `gpt-6-luna` | `high` | Requested or project-required routine audit |
 | Audit A1 `madv2_audit_a1_luna_xhigh` | `gpt-6-luna` | `xhigh` | Deep cross-boundary/constraint audit |
 | Audit A2 `madv2_audit_a2_luna_max` | `gpt-6-luna` | `max` | Critical acceptance gate |
 
