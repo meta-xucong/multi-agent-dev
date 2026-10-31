@@ -2,6 +2,8 @@
 
 Use this reference only for requested multi-agent delegation. The parent `SKILL.md` Scope discipline controls. Do not perform D/I/A classification, profile selection, or provenance collection as ceremony; use only the parts needed to route the requested work. Independent audit is conditional as described in `execution-audit.md`, not an automatic A0 step.
 
+Give every dispatched role the full Scope discipline and current user request. No auditor may require speculative defenses, unrequested hashing, an unproven fallback, or special handling for hypothetical/non-P0 cases; report the finding rather than directing scope expansion.
+
 ## Logical roles
 
 | Role | Responsibility | Write access |
