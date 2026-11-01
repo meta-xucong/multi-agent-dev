@@ -46,7 +46,7 @@ class ScopeGuardTests(unittest.TestCase):
         self.assertIn("monitor-one", self.report("REGISTER")["systemMessage"])
 
     def violation(self, issue: str = "issue-1", paths: list[str] | None = None) -> None:
-        self.report("VIOLATION", issue_id=issue, rule="no SHA", evidence="new call to digest",
+        self.report("VIOLATION", issue_id=issue, rule="no_unrequested_fallback", evidence="new fallback has no consumer",
                     paths=[str(self.root / "src" / "a.py")] if paths is None else paths)
 
     def allow(self, tool: str, command: str, issue_ids: list[str] | None = None) -> None:
@@ -161,7 +161,7 @@ class ScopeGuardTests(unittest.TestCase):
 
     def test_accepted_state_changes_emit_receipts(self) -> None:
         self.register()
-        response = self.report("VIOLATION", issue_id="issue-1", rule="no SHA", evidence="new digest", paths=[])
+        response = self.report("VIOLATION", issue_id="issue-1", rule="no_unrequested_fallback", evidence="new fallback has no consumer", paths=[])
         self.assertIn("MADV2_SCOPE_VIOLATION", response["systemMessage"])
         response = self.report("ALLOW", issue_ids=["issue-1"], tool="Bash", cwd=self.cwd,
                                tool_input={"command": "read"})
@@ -206,7 +206,7 @@ class ScopeGuardTests(unittest.TestCase):
         read = {"hook_event_name": "PreToolUse", "session_id": self.session,
                 "tool_name": "Bash", "cwd": self.cwd, "tool_input": {"command": "read source"}}
         run(event("REGISTER"))
-        run(event("VIOLATION", issue_id="issue-1", rule="no SHA", evidence="new digest call",
+        run(event("VIOLATION", issue_id="issue-1", rule="no_unrequested_fallback", evidence="new fallback has no consumer",
                   paths=[str(self.root / "src" / "a.py")]))
         self.assertEqual(run(read)["hookSpecificOutput"]["permissionDecision"], "deny")
         run(event("ALLOW", issue_ids=["issue-1"], tool="Bash", cwd=self.cwd, tool_input=read["tool_input"]))
