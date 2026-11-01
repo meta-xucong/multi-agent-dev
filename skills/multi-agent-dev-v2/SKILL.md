@@ -7,6 +7,8 @@ description: "按 D/I/A 风险轴组织主控、按需思考、最小执行和�
 
 Use this workflow for multi-agent implementation or audit requests. Follow the user's latest instructions and the target project's `AGENTS.md`, contracts, and development documents first. This skill never expands scope or authorizes commits, pushes, deployment, paid calls, or external changes.
 
+Hash and checksum operations follow the requested outcome and existing project workflow. Do not add unrelated hash checks, and do not request separate authorization for checks required by the task or project workflow.
+
 Before implementation, load [role-routing.md](references/role-routing.md), [execution-audit.md](references/execution-audit.md), [hook-routing-fallback.md](references/hook-routing-fallback.md), and [long-task-and-notification.md](references/long-task-and-notification.md). For installation, see [README.md](README.md).
 
 The main session owns baseline, scope freeze, role selection, writer handoff, correction, integration, and reporting. Invoke a thinker only for a material unresolved design ambiguity. Keep one writer at a time. Every implementation requiring acceptance gets a separate read-only auditor; if no independent auditor can be started, report self-review only and do not claim independent acceptance.

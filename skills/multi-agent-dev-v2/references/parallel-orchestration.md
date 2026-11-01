@@ -2,6 +2,8 @@
 
 The main session owns user intent, scope freeze, authorization, integration and reporting. The SQLite Controller is the only state writer and owns DAG scheduling, controller epoch, CAS, leases, retry budget and recovery. Workers return facts and never edit the ledger.
 
+The controller's manifest, task, diff, and audit hashes are internal to its requested workflow. Do not add separate hash-authorization gates for those operations.
+
 ## Lifecycle
 
 1. Freeze a ScopeManifest and compute its hash.
