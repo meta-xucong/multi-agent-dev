@@ -1,4 +1,8 @@
-# Role and route rules
+# Optional role and route guidance
+
+Use this reference only for requested multi-agent delegation. The parent `SKILL.md` Scope discipline controls. Do not perform D/I/A classification, profile selection, or provenance collection as ceremony; use only the parts needed to route the requested work. Independent audit is conditional as described in `execution-audit.md`, not an automatic A0 step.
+
+Give every dispatched role the full Scope discipline and current user request. No auditor may require speculative defenses, unrequested hashing, an unproven fallback, or special handling for hypothetical/non-P0 cases; report the finding rather than directing scope expansion.
 
 ## Logical roles
 
@@ -7,6 +11,7 @@
 | Main | Read project rules, freeze contract, classify D/I/A, coordinate one writer, correct drift, integrate and report | Owns orchestration; implementation only when explicitly acting as the sole writer |
 | Think | Resolve a material design/source/contract/acceptance ambiguity; return the minimum decision and risks | Read-only; no code, tests, or scope expansion |
 | Execute | Implement the frozen contract and targeted tests in its owned boundary | One writer at a time; no public semantic or acceptance changes |
+| Scope monitor | Independently inspect actual task changes for concrete violations of the requested scope and Scope discipline | Read-only; report to Main; recheck corrections |
 | Audit | Independently compare a fixed version with requirements, diff, tests, and evidence | Read-only; cannot repair or approve its own changes |
 
 Do not keep all roles running permanently. Skip Think when D0; do not create a second Main. If independent dispatch is unavailable, state that audit is not independent.
@@ -23,12 +28,12 @@ File count, task size, a routine failure, or an agent asking for more effort is 
 
 | Role/profile | Requested model | Requested effort | Use |
 | --- | --- | --- | --- |
-| Think `madv2_think_sol_xhigh` | `gpt-6-sol` | `xhigh` | D1 only; isolated reasoning task |
+| Think `madv2_think_sol_xhigh` | `gpt-6.1-sol` | `xhigh` | D1 only; isolated reasoning task |
 | Execute I0 `madv2_execute_i0_luna_low` | `gpt-6-luna` | `low` | Every I0 admission condition is evidenced |
 | Execute I1 `madv2_execute_i1_luna_high` | `gpt-6-luna` | `high` | Normal frozen-contract work |
 | Execute I2 `madv2_execute_i2_luna_xhigh` | `gpt-6-luna` | `xhigh` | A specific I2 trigger is recorded |
 | Execute I3 `madv2_execute_i3_luna_max` | `gpt-6-luna` | `max` | Exceptional, human-reviewed I3 only |
-| Audit A0 `madv2_audit_a0_luna_high` | `gpt-6-luna` | `high` | Default independent audit |
+| Audit A0 `madv2_audit_a0_luna_high` | `gpt-6-luna` | `high` | Requested or project-required routine audit |
 | Audit A1 `madv2_audit_a1_luna_xhigh` | `gpt-6-luna` | `xhigh` | Deep cross-boundary/constraint audit |
 | Audit A2 `madv2_audit_a2_luna_max` | `gpt-6-luna` | `max` | Critical acceptance gate |
 

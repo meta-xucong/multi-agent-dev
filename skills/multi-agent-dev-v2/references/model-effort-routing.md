@@ -1,4 +1,6 @@
-# Model and effort routing
+# Optional model and effort routing
+
+Use only for requested route selection or the optional V2.1 controller workflow. This table is not a default requirement for ordinary implementation. The parent `SKILL.md` Scope discipline controls, and missing route evidence does not block unrelated work.
 
 The requested route is data in the TaskSpec. It is not proof of runtime use. A live runtime result must separately provide observed model and effort; otherwise the route status is ROUTE_UNVERIFIED.
 
@@ -7,7 +9,7 @@ The requested route is data in the TaskSpec. It is not proof of runtime use. A l
 | Main session / integration | gpt-6-luna / high |
 | Controller state machine | no LLM |
 | Controller plan suggestion | gpt-6-luna / high |
-| Think | gpt-6-sol / xhigh |
+| Think | gpt-6.1-sol / xhigh |
 | Execute I0 | gpt-6-luna / low |
 | Execute I1 | gpt-6-luna / high |
 | Execute I2 | gpt-6-luna / xhigh |

@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/scope_guard.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\scope_guard.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/scope_guard.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\scope_guard.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/multi-agent-dev-v2/hooks/scope_guard.py",
+            "commandWindows": "\"C:\\ABSOLUTE\\PATH\\python.exe\" \"C:\\ABSOLUTE\\PATH\\multi-agent-dev-v2\\hooks\\scope_guard.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

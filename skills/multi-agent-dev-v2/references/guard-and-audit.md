@@ -1,5 +1,7 @@
 # Guard and audit boundaries
 
+This reference applies only to the optional controller workflow when the user requests it. Its hash operations are part of that workflow and do not require separate authorization. It does not add gates to ordinary tasks; the parent `SKILL.md` scope discipline controls.
+
 Deterministic Guard checks schema, paths, manifest binding, lease and fencing tokens, revision, required evidence and side-effect policy. Semantic Guard is read-only and emits ALLOW, WARN, BLOCK or NEEDS_USER_DECISION with reason codes.
 
 A worker HandoffPacket must have audit_receipt=null. It must include a result revision, diff or artifact hash, test receipts, next allowed actions and no unresolved open questions for SUCCEEDED status.
